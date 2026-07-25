@@ -4,4 +4,4 @@ compatibility_date = "2026-07-19"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-BACKEND_URL = "https://live-api.262832.xyz"
+BACKEND_URL = "https://live-api.ctn32.us.kg"
