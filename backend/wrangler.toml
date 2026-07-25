@@ -15,4 +15,4 @@ crons = ["* * * * *"]
 ADMIN_USER = "admin"
 ADMIN_PASSWORD = "Ow114514"
 UAPI_KEY = "uapi-lb16aqlv7JCgxfm5y51CaS3aTxcDaxXqF4ubH6Y6"
-FRONTEND_URL = "https://live.262832.xyz"
+FRONTEND_URL = "https://live.ctn32.us.kg"
