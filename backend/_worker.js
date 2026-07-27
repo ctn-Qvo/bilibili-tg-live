@@ -323,6 +323,11 @@ async function handleRequest(request, env) {
 
     if (method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env) });
 
+    // 公开健康检查接口
+    if (path === '/api/health' && method === 'GET') {
+      return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, env);
+    }
+
     if (path === '/api/login' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const { username, password } = body;
