@@ -311,7 +311,8 @@ function corsHeaders(env) {
     'Access-Control-Allow-Origin': env.FRONTEND_URL || 'https://live.ctn32.us.kg',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CTN-Cookie',
-    'Access-Control-Allow-Credentials': 'true'
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin'
   };
 }
 
@@ -323,7 +324,7 @@ async function handleRequest(request, env) {
 
     if (method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env) });
 
-    // 公开健康检查接口
+    // 公开健康检查
     if (path === '/api/health' && method === 'GET') {
       return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, env);
     }
@@ -335,7 +336,8 @@ async function handleRequest(request, env) {
         const auth = btoa(username + ':' + password);
         const headers = {
           ...corsHeaders(env),
-          'Set-Cookie': 'auth=' + auth + '; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=None; Domain=.ctn32.us.kg',
+          // 删除 Domain，确保 Cookie 可跨子域发送
+          'Set-Cookie': 'auth=' + auth + '; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=None',
           'Content-Type': 'application/json'
         };
         return new Response(JSON.stringify({ success: true }), { headers });
@@ -345,7 +347,7 @@ async function handleRequest(request, env) {
     if (path === '/api/logout' && method === 'POST') {
       const headers = {
         ...corsHeaders(env),
-        'Set-Cookie': 'auth=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=None; Domain=.ctn32.us.kg',
+        'Set-Cookie': 'auth=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=None',
         'Content-Type': 'application/json'
       };
       return new Response(JSON.stringify({ success: true }), { headers });
@@ -491,6 +493,13 @@ async function handleRequest(request, env) {
       const error = await getClientError(env, id);
       if (!error) return jsonResponse({ error: '错误不存在' }, 404, env);
       return jsonResponse(error, 200, env);
+    }
+
+    // SPA fallback: 非 API 请求返回 HTML
+    if (method === 'GET') {
+      // 这里应该返回前端 HTML，但当前 Worker 是纯 API 服务，不托管 HTML。
+      // 实际 HTML 由前端 Worker 提供，所以这里仍然返回 404。
+      return jsonResponse({ error: 'Not Found' }, 404, env);
     }
 
     return jsonResponse({ error: 'Not Found' }, 404, env);
