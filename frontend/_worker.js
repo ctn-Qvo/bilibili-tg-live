@@ -671,6 +671,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
         btn.innerHTML = '登录';
       }
     });
+
     (async function() {
       var authed = false;
       try {
@@ -690,11 +691,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
     })();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  init();
 
   window.onerror = function(msg, url, line, col, error) {
     console.error('[GLOBAL]', msg, url, line, col, error);
@@ -705,6 +702,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
   window.addEventListener('unhandledrejection', function(e) {
     console.error('Promise错误', e.reason);
   });
+})();
 </script>
 </body>
 </html>
