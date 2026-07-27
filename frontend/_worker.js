@@ -7,10 +7,45 @@ const HTML = `<!DOCTYPE html>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.11.0/axios.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstrap.bundle.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/axios@1.11.0/dist/axios.min.js"></script>
+<script>
+  if (typeof axios === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.11.0/axios.min.js"><\/script>');
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  if (typeof bootstrap === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstrap.bundle.min.js"><\/script>');
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.2/dist/sweetalert2.all.min.js"></script>
+<script>
+  if (typeof Swal === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.22.2/sweetalert2.all.min.js"><\/script>');
+  }
+</script>
+<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.2/dist/sweetalert2.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
+<script>
+  if (typeof Chart === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"><\/script>');
+  }
+</script>
+<script>
+  window.addEventListener('load', function() {
+    var links = document.querySelectorAll('link[href*="bootstrap-icons"]');
+    if (!links.length) {
+      var l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = 'https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css';
+      document.head.appendChild(l);
+    }
+  });
+</script>
 <style>
 :root{--bg:#f0f5ff;--card-bg:#ffffff;--primary:#2b6cb5;--text:#1a365d}
 [data-bs-theme="dark"]{--bg:#1a202c;--card-bg:#2d3748;--primary:#4a8bdb;--text:#e2e8f0}
@@ -82,538 +117,619 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 </div>
 <script>
 (function() {
-  try {
-    if (!document.cookie.includes("ctn32=ctn32")) {
-      document.cookie = "ctn32=ctn32; path=/; Secure; SameSite=None";
+  function ensureCTNCookie() {
+    try {
+      var exists = document.cookie.split(';').some(function(v) {
+        return v.trim() === 'ctn32=ctn32';
+      });
+      if (!exists) {
+        document.cookie = 'ctn32=ctn32; path=/; max-age=86400; SameSite=Lax';
+      }
+    } catch(e) {
+      console.warn('CTN cookie init failed', e);
     }
-  } catch(e) {
-    console.warn("cookie设置失败", e);
   }
-})();
+  ensureCTNCookie();
 
-axios.defaults.baseURL = '';
-axios.defaults.withCredentials = true;
-axios.defaults.timeout = 10000;
-axios.interceptors.response.use(
-  function(response) { return response; },
-  function(error) {
-    if (error.code === "ECONNABORTED") {
-      showMessage("请求超时，请检查网络", "error");
-    } else if (error.response) {
-      console.error("API错误:", error.response.status, error.response.data);
-    } else {
-      console.error("网络错误:", error.message);
+  if (typeof axios === 'undefined') {
+    alert('Axios 加载失败，请刷新页面或检查网络。');
+    throw new Error('axios missing');
+  }
+
+  axios.defaults.baseURL = '';
+  axios.defaults.withCredentials = true;
+  axios.defaults.timeout = 10000;
+
+  axios.interceptors.request.use(function(config) {
+    ensureCTNCookie();
+    var cookies = document.cookie || '';
+    if (!cookies.includes('ctn32=ctn32')) {
+      cookies += (cookies ? '; ' : '') + 'ctn32=ctn32';
     }
+    config.headers['Cookie'] = cookies;
+    config.headers['X-CTN-Cookie'] = 'ctn32=ctn32';
+    return config;
+  }, function(error) {
     return Promise.reject(error);
-  }
-);
-
-function showMessage(msg, type) {
-  type = type || 'info';
-  var box = document.createElement('div');
-  box.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type==='error'?'danger':type==='warn'?'warning':'success');
-  box.style.zIndex = '99999';
-  box.style.minWidth = '320px';
-  box.style.textAlign = 'center';
-  box.innerHTML = msg;
-  document.body.appendChild(box);
-  setTimeout(function() {
-    box.style.transition = 'opacity .5s';
-    box.style.opacity = '0';
-    setTimeout(function() { box.remove(); }, 500);
-  }, 8000);
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function formatDate(iso) {
-  if (!iso) return '从未更新';
-  return new Date(iso).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-}
-
-async function reportError(error, context) {
-  try {
-    var payload = {
-      message: error.message || String(error),
-      stack: error.stack || '',
-      url: window.location.href,
-      user_agent: navigator.userAgent,
-      context: context || 'unknown',
-      extra: {}
-    };
-    var res = await axios.post('/api/client-errors', payload);
-    return res.data.id;
-  } catch (e) {
-    console.error('上报错误失败:', e);
-    return null;
-  }
-}
-
-async function showErrorWithDetail(msg, error, context) {
-  var errorId = await reportError(error, context);
-  var detailLink = '';
-  if (errorId) {
-    detailLink = ' <button class="btn btn-link btn-sm p-0" onclick="viewErrorDetail(\'' + errorId + '\')">查看详情</button>';
-  }
-  var fullMsg = msg + detailLink;
-  showMessage(fullMsg, 'error');
-}
-
-window.viewErrorDetail = async function(id) {
-  try {
-    var res = await axios.get('/api/client-errors/' + id);
-    var data = res.data;
-    var body = document.getElementById('errorDetailBody');
-    var html = '<p><strong>错误ID:</strong> ' + escapeHtml(data.id) + '</p>';
-    html += '<p><strong>时间:</strong> ' + escapeHtml(formatDate(data.timestamp)) + '</p>';
-    html += '<p><strong>消息:</strong> ' + escapeHtml(data.message) + '</p>';
-    html += '<p><strong>URL:</strong> ' + escapeHtml(data.url) + '</p>';
-    html += '<p><strong>用户代理:</strong> ' + escapeHtml(data.user_agent) + '</p>';
-    html += '<p><strong>上下文:</strong> ' + escapeHtml(data.context) + '</p>';
-    html += '<p><strong>堆栈:</strong><br><pre style="background:#f8f9fa;padding:10px;border-radius:4px;white-space:pre-wrap;word-break:break-all;">' + escapeHtml(data.stack || '无堆栈信息') + '</pre></p>';
-    if (data.extra) {
-      html += '<p><strong>额外信息:</strong> <pre>' + JSON.stringify(data.extra, null, 2) + '</pre></p>';
-    }
-    body.innerHTML = html;
-    var modal = new bootstrap.Modal(document.getElementById('errorDetailModal'));
-    modal.show();
-  } catch (e) {
-    showMessage('加载错误详情失败: ' + e.message, 'error');
-  }
-};
-
-async function checkAuth() {
-  try {
-    var res = await axios.get('/api/me');
-    var contentType = res.headers['content-type'] || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error('服务器返回非 JSON 响应，请检查后端服务。');
-    }
-    return res.status === 200 && res.data && res.data.username;
-  } catch (e) {
-    await showErrorWithDetail('认证检查失败，请检查网络或后端服务。', e, 'checkAuth');
-    return false;
-  }
-}
-
-async function login(username, password) {
-  var res = await fetch('/api/login', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: username, password: password })
   });
-  var text = await res.text();
-  var data;
-  try {
-    data = JSON.parse(text);
-  } catch(e) {
-    throw new Error('服务器返回异常:\n' + text.substring(0, 100));
+
+  axios.interceptors.response.use(
+    function(response) { return response; },
+    function(error) {
+      if (error.code === 'ECONNABORTED') {
+        showMessage('请求超时，请检查网络', 'error');
+      } else if (error.response) {
+        console.error('API错误:', error.response.status, error.response.data);
+      } else {
+        console.error('网络错误:', error.message);
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  var reportingError = false;
+
+  function showMessage(msg, type) {
+    type = type || 'info';
+    var box = document.createElement('div');
+    box.className = 'position-fixed top-0 start-50 translate-middle-x mt-3 alert alert-' + (type === 'error' ? 'danger' : type === 'warn' ? 'warning' : 'success');
+    box.style.zIndex = '99999';
+    box.style.minWidth = '320px';
+    box.style.textAlign = 'center';
+    box.textContent = msg;
+    document.body.appendChild(box);
+    setTimeout(function() {
+      box.style.transition = 'opacity .5s';
+      box.style.opacity = '0';
+      setTimeout(function() { box.remove(); }, 500);
+    }, 8000);
   }
-  if (!res.ok) {
-    throw new Error(data.error || 'HTTP ' + res.status);
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  if (!data.success) {
-    throw new Error(data.error || '登录失败');
+
+  function formatDate(iso) {
+    if (!iso) return '从未更新';
+    return dayjs(iso).format('YYYY-MM-DD HH:mm:ss');
   }
-  return true;
-}
 
-function logout() {
-  axios.post('/api/logout');
-  document.cookie = 'auth=; Max-Age=0; path=/;';
-  location.replace('/');
-}
+  async function reportError(error, context) {
+    if (reportingError) return null;
+    reportingError = true;
+    try {
+      var payload = {
+        message: error.message || String(error),
+        stack: error.stack || '',
+        url: window.location.href,
+        user_agent: navigator.userAgent,
+        context: context || 'unknown',
+        extra: {}
+      };
+      var res = await axios.post('/api/client-errors', payload);
+      return res.data.id;
+    } catch (e) {
+      console.error('上报错误失败:', e);
+      return null;
+    } finally {
+      reportingError = false;
+    }
+  }
 
-function showLoginPanel() {
-  document.getElementById('loginPanel').style.display = 'flex';
-  document.getElementById('mainPanel').style.display = 'none';
-}
+  async function showErrorWithDetail(msg, error, context) {
+    var errorId = await reportError(error, context);
+    var detailLink = '';
+    if (errorId) {
+      detailLink = ' <button class="btn btn-link btn-sm p-0" onclick="viewErrorDetail(\'' + errorId + '\')">查看详情</button>';
+    }
+    var fullMsg = msg + detailLink;
+    showMessage(fullMsg, 'error');
+  }
 
-function showMainPanel() {
-  document.getElementById('loginPanel').style.display = 'none';
-  document.getElementById('mainPanel').style.display = 'block';
-}
+  window.viewErrorDetail = async function(id) {
+    try {
+      var res = await axios.get('/api/client-errors/' + id);
+      var data = res.data;
+      var body = document.getElementById('errorDetailBody');
+      var html = '<p><strong>错误ID:</strong> ' + escapeHtml(data.id) + '</p>';
+      html += '<p><strong>时间:</strong> ' + escapeHtml(formatDate(data.timestamp)) + '</p>';
+      html += '<p><strong>消息:</strong> ' + escapeHtml(data.message) + '</p>';
+      html += '<p><strong>URL:</strong> ' + escapeHtml(data.url) + '</p>';
+      html += '<p><strong>用户代理:</strong> ' + escapeHtml(data.user_agent) + '</p>';
+      html += '<p><strong>上下文:</strong> ' + escapeHtml(data.context) + '</p>';
+      html += '<p><strong>堆栈:</strong><br><pre style="background:#f8f9fa;padding:10px;border-radius:4px;white-space:pre-wrap;word-break:break-all;">' + escapeHtml(data.stack || '无堆栈信息') + '</pre></p>';
+      if (data.extra) {
+        html += '<p><strong>额外信息:</strong> <pre>' + escapeHtml(JSON.stringify(data.extra, null, 2)) + '</pre></p>';
+      }
+      body.innerHTML = html;
+      if (typeof bootstrap !== 'undefined') {
+        var modal = new bootstrap.Modal(document.getElementById('errorDetailModal'));
+        modal.show();
+      } else {
+        showMessage('Bootstrap未加载，无法显示详情弹窗', 'error');
+      }
+    } catch (e) {
+      showMessage('加载错误详情失败: ' + e.message, 'error');
+    }
+  };
 
-async function renderRooms() {
-  var container = document.getElementById('roomContainer');
-  try {
-    var res = await axios.get('/api/rooms');
-    var rooms = res.data.rooms;
-    var states = res.data.states;
-    if (!rooms || !rooms.length) {
-      container.innerHTML = '<div class="col-12 text-center text-muted py-4">暂无房间，请添加</div>';
+  async function checkAuth() {
+    try {
+      var res = await axios.get('/api/me');
+      var contentType = res.headers['content-type'] || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('服务器返回非 JSON 响应，请检查后端服务。');
+      }
+      return res.status === 200 && res.data && res.data.username;
+    } catch (e) {
+      await showErrorWithDetail('认证检查失败，请检查网络或后端服务。', e, 'checkAuth');
+      return false;
+    }
+  }
+
+  async function login(username, password) {
+    var res = await fetch('/api/login?_=' + Date.now(), {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-CTN-Cookie': 'ctn32=ctn32'
+      },
+      body: JSON.stringify({ username: username, password: password })
+    });
+    var text = await res.text();
+    var data;
+    try {
+      data = JSON.parse(text);
+    } catch(e) {
+      throw new Error('服务器返回异常:\n' + text.substring(0, 200));
+    }
+    if (!res.ok) {
+      throw new Error(data.error || 'HTTP ' + res.status);
+    }
+    if (!data.success) {
+      throw new Error(data.error || '登录失败');
+    }
+    return data;
+  }
+
+  function logout() {
+    axios.post('/api/logout');
+    document.cookie = 'auth=; Max-Age=0; path=/;';
+    location.replace('/');
+  }
+
+  function showLoginPanel() {
+    document.getElementById('loginPanel').style.display = 'flex';
+    document.getElementById('mainPanel').style.display = 'none';
+  }
+
+  function showMainPanel() {
+    document.getElementById('loginPanel').style.display = 'none';
+    document.getElementById('mainPanel').style.display = 'block';
+  }
+
+  async function renderRooms() {
+    var container = document.getElementById('roomContainer');
+    try {
+      var res = await axios.get('/api/rooms');
+      var rooms = res.data.rooms;
+      var states = res.data.states || {};
+      if (!rooms || !rooms.length) {
+        container.innerHTML = '<div class="col-12 text-center text-muted py-4">暂无房间，请添加</div>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < rooms.length; i++) {
+        var id = rooms[i];
+        var state = states[id] || {};
+        var isLive = state.state === 'LIVE';
+        var dotClass = isLive ? 'live' : 'offline';
+        var title = state.last_title || '未知';
+        var online = state.last_online || 0;
+        var area = state.last_parent_area ? state.last_parent_area + ' - ' + state.last_area : '未知分区';
+        var updateTime = formatDate(state.last_update);
+        html += '<div class="col"><div class="card room-card h-100"><div class="card-body d-flex align-items-start"><span class="status-dot ' + dotClass + '"></span><div class="flex-grow-1 ms-2"><div class="room-title">' + escapeHtml(title) + '</div><div class="room-meta">房间 ' + id + ' · 人气 ' + online + ' · ' + escapeHtml(area) + '</div><div class="room-meta small">更新于 ' + updateTime + '</div></div><button class="delete-room-btn btn btn-outline-danger btn-sm" data-room="' + id + '" style="writing-mode: vertical-rl; letter-spacing: 2px; padding: 4px 6px; height: auto; min-height: 60px; line-height: 1.2;">删除</button></div></div></div>';
+      }
+      container.innerHTML = html;
+    } catch (e) {
+      showMessage('加载房间失败: ' + e.message, 'error');
+    }
+  }
+
+  var allLogs = [];
+  async function fetchLogs() {
+    try {
+      var res = await axios.get('/api/logs');
+      allLogs = res.data;
+      renderLogs();
+    } catch (e) {
+      console.error('获取日志失败', e);
+    }
+  }
+
+  function renderLogs() {
+    var container = document.getElementById('logContainer');
+    var search = document.getElementById('logSearch').value.toLowerCase();
+    var level = document.getElementById('logLevelFilter').value;
+    var filtered = allLogs;
+    if (search) filtered = filtered.filter(function(e) {
+      var msg = String(e.message || '').toLowerCase();
+      return msg.includes(search);
+    });
+    if (level) filtered = filtered.filter(function(e) { return e.level === level; });
+    if (!filtered.length) {
+      container.innerHTML = '<div class="text-secondary">暂无日志</div>';
       return;
     }
     var html = '';
-    for (var i = 0; i < rooms.length; i++) {
-      var id = rooms[i];
-      var state = states[id] || {};
-      var isLive = state.state === 'LIVE';
-      var dotClass = isLive ? 'live' : 'offline';
-      var title = state.last_title || '未知';
-      var online = state.last_online || 0;
-      var area = state.last_parent_area ? state.last_parent_area + ' - ' + state.last_area : '未知分区';
-      var updateTime = formatDate(state.last_update);
-      html += '<div class="col"><div class="card room-card h-100"><div class="card-body d-flex align-items-start"><span class="status-dot ' + dotClass + '"></span><div class="flex-grow-1 ms-2"><div class="room-title">' + escapeHtml(title) + '</div><div class="room-meta">房间 ' + id + ' · 人气 ' + online + ' · ' + escapeHtml(area) + '</div><div class="room-meta small">更新于 ' + updateTime + '</div></div><button class="delete-room-btn btn btn-outline-danger btn-sm" data-room="' + id + '" style="writing-mode: vertical-rl; letter-spacing: 2px; padding: 4px 6px; height: auto; min-height: 60px; line-height: 1.2;">删除</button></div></div></div>';
+    for (var i = 0; i < filtered.length; i++) {
+      var entry = filtered[i];
+      var levelColor = { info: 'log-level-info', warn: 'log-level-warn', error: 'log-level-error' }[entry.level] || '';
+      html += '<div class="log-entry"><span class="log-time">' + escapeHtml(entry.time) + '</span><span class="' + levelColor + '">[' + escapeHtml(entry.level.toUpperCase()) + ']</span> ' + escapeHtml(entry.message) + '</div>';
     }
     container.innerHTML = html;
-  } catch (e) {
-    showMessage('加载房间失败: ' + e.message, 'error');
   }
-}
 
-var allLogs = [];
-async function fetchLogs() {
-  try {
-    var res = await axios.get('/api/logs');
-    allLogs = res.data;
-    renderLogs();
-  } catch (e) {
-    console.error('获取日志失败', e);
-  }
-}
-
-function renderLogs() {
-  var container = document.getElementById('logContainer');
-  var search = document.getElementById('logSearch').value.toLowerCase();
-  var level = document.getElementById('logLevelFilter').value;
-  var filtered = allLogs;
-  if (search) filtered = filtered.filter(function(e) { return e.message.toLowerCase().includes(search); });
-  if (level) filtered = filtered.filter(function(e) { return e.level === level; });
-  if (!filtered.length) {
-    container.innerHTML = '<div class="text-secondary">暂无日志</div>';
-    return;
-  }
-  var html = '';
-  for (var i = 0; i < filtered.length; i++) {
-    var entry = filtered[i];
-    var levelColor = { info: 'log-level-info', warn: 'log-level-warn', error: 'log-level-error' }[entry.level] || '';
-    html += '<div class="log-entry"><span class="log-time">' + escapeHtml(entry.time) + '</span><span class="' + levelColor + '">[' + escapeHtml(entry.level.toUpperCase()) + ']</span> ' + escapeHtml(entry.message) + '</div>';
-  }
-  container.innerHTML = html;
-}
-
-async function renderConfigs() {
-  var tbody = document.getElementById('configTableBody');
-  try {
-    var res = await axios.get('/api/notify-configs');
-    var configs = res.data;
-    if (!configs.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无配置</td></tr>';
-      return;
+  async function renderConfigs() {
+    var tbody = document.getElementById('configTableBody');
+    try {
+      var res = await axios.get('/api/notify-configs');
+      var configs = res.data;
+      if (!configs.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无配置</td></tr>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < configs.length; i++) {
+        var cfg = configs[i];
+        var protocolLabel = { telegram: 'Telegram', onebot_private: 'OneBot私聊', onebot_group: 'OneBot群聊', discord: 'Discord', custom_webhook: '自定义Webhook' }[cfg.protocol] || cfg.protocol;
+        var status = cfg.enabled ? '启用' : '禁用';
+        var statusColor = cfg.enabled ? 'success' : 'secondary';
+        html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
+      }
+      tbody.innerHTML = html;
+    } catch (e) {
+      showMessage('加载配置失败: ' + e.message, 'error');
     }
-    var html = '';
-    for (var i = 0; i < configs.length; i++) {
-      var cfg = configs[i];
-      var protocolLabel = { telegram: 'Telegram', onebot_private: 'OneBot私聊', onebot_group: 'OneBot群聊', discord: 'Discord', custom_webhook: '自定义Webhook' }[cfg.protocol] || cfg.protocol;
-      var status = cfg.enabled ? '启用' : '禁用';
-      var statusColor = cfg.enabled ? 'success' : 'secondary';
-      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
-    }
-    tbody.innerHTML = html;
-  } catch (e) {
-    showMessage('加载配置失败: ' + e.message, 'error');
-  }
-}
-
-function initMainEvents() {
-  document.getElementById('themeToggle').addEventListener('click', function() {
-    var html = document.documentElement;
-    var theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-bs-theme', theme);
-    this.textContent = theme === 'dark' ? '亮色' : '深色';
-  });
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    document.documentElement.setAttribute('data-bs-theme', 'dark');
-    document.getElementById('themeToggle').textContent = '亮色';
   }
 
-  document.getElementById('logoutBtn').addEventListener('click', logout);
-
-  document.getElementById('refreshLogsBtn').addEventListener('click', fetchLogs);
-  document.getElementById('logSearch').addEventListener('input', renderLogs);
-  document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
   var logTimer = null;
-  document.getElementById('autoRefresh').addEventListener('change', function() {
-    if (this.checked) {
-      logTimer = setInterval(fetchLogs, 5000);
-      fetchLogs();
-    } else {
+
+  function initMainEvents() {
+    if (logTimer) {
       clearInterval(logTimer);
       logTimer = null;
     }
-  });
-  logTimer = setInterval(fetchLogs, 5000);
 
-  var addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
-  document.getElementById('addRoomBtn').addEventListener('click', function() {
-    document.getElementById('roomInput').value = '';
-    addRoomModal.show();
-  });
-  document.getElementById('addRoomConfirmBtn').addEventListener('click', async function() {
-    var roomId = document.getElementById('roomInput').value.trim();
-    if (!roomId) { showMessage('请输入房间号', 'error'); return; }
-    this.disabled = true;
-    this.textContent = '提交中...';
-    try {
-      await axios.post('/api/rooms', { room_id: roomId });
-      addRoomModal.hide();
-      showMessage('房间 ' + roomId + ' 已添加', 'info');
-      await renderRooms();
-    } catch (e) {
-      showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+    document.getElementById('themeToggle').addEventListener('click', function() {
+      var html = document.documentElement;
+      var theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-bs-theme', theme);
+      this.textContent = theme === 'dark' ? '亮色' : '深色';
+    });
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-bs-theme', 'dark');
+      document.getElementById('themeToggle').textContent = '亮色';
     }
-    this.disabled = false;
-    this.textContent = '完成';
-  });
 
-  document.addEventListener('click', async function(e) {
-    var btn = e.target.closest('.delete-room-btn');
-    if (btn) {
-      var roomId = btn.dataset.room;
-      if (!confirm('确定删除房间 ' + roomId + ' 吗？')) return;
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    document.getElementById('refreshLogsBtn').addEventListener('click', fetchLogs);
+    document.getElementById('logSearch').addEventListener('input', renderLogs);
+    document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
+    document.getElementById('autoRefresh').addEventListener('change', function() {
+      if (this.checked) {
+        if (logTimer) clearInterval(logTimer);
+        logTimer = setInterval(fetchLogs, 5000);
+        fetchLogs();
+      } else {
+        if (logTimer) {
+          clearInterval(logTimer);
+          logTimer = null;
+        }
+      }
+    });
+    if (document.getElementById('autoRefresh').checked) {
+      if (logTimer) clearInterval(logTimer);
+      logTimer = setInterval(fetchLogs, 5000);
+      fetchLogs();
+    }
+
+    if (typeof bootstrap !== 'undefined') {
+      var addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
+      document.getElementById('addRoomBtn').addEventListener('click', function() {
+        document.getElementById('roomInput').value = '';
+        addRoomModal.show();
+      });
+      document.getElementById('addRoomConfirmBtn').addEventListener('click', async function() {
+        var roomId = document.getElementById('roomInput').value.trim();
+        if (!roomId) { showMessage('请输入房间号', 'error'); return; }
+        this.disabled = true;
+        this.textContent = '提交中...';
+        try {
+          await axios.post('/api/rooms', { room_id: roomId });
+          addRoomModal.hide();
+          showMessage('房间 ' + roomId + ' 已添加', 'info');
+          await renderRooms();
+        } catch (e) {
+          showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+        }
+        this.disabled = false;
+        this.textContent = '完成';
+      });
+    } else {
+      console.warn('Bootstrap未加载，模态框功能不可用');
+    }
+
+    document.addEventListener('click', async function(e) {
+      var btn = e.target.closest('.delete-room-btn');
+      if (btn) {
+        var roomId = btn.dataset.room;
+        if (!confirm('确定删除房间 ' + roomId + ' 吗？')) return;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        try {
+          await axios.delete('/api/rooms', { data: { room_id: roomId } });
+          showMessage('房间 ' + roomId + ' 已删除', 'info');
+          await renderRooms();
+        } catch (e) {
+          showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
+          btn.disabled = false;
+          btn.innerHTML = '删除';
+        }
+      }
+    });
+
+    document.getElementById('checkAllBtn').addEventListener('click', async function() {
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
       try {
-        await axios.delete('/api/rooms', { data: { room_id: roomId } });
-        showMessage('房间 ' + roomId + ' 已删除', 'info');
+        await axios.post('/api/monitor', { force: true });
+        showMessage('检查完成', 'info');
         await renderRooms();
       } catch (e) {
-        showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
-        btn.disabled = false;
-        btn.innerHTML = '删除';
+        showMessage('检查失败: ' + e.message, 'error');
       }
-    }
-  });
+      this.disabled = false;
+      this.innerHTML = '<i class="bi bi-arrow-repeat"></i> 检查';
+    });
 
-  document.getElementById('checkAllBtn').addEventListener('click', async function() {
-    this.disabled = true;
-    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    try {
-      await axios.post('/api/monitor', { force: true });
-      showMessage('检查完成', 'info');
+    document.getElementById('refreshRoomsBtn').addEventListener('click', async function() {
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
       await renderRooms();
-    } catch (e) {
-      showMessage('检查失败: ' + e.message, 'error');
-    }
-    this.disabled = false;
-    this.innerHTML = '<i class="bi bi-arrow-repeat"></i> 检查';
-  });
+      this.disabled = false;
+      this.innerHTML = '<i class="bi bi-cloud-refresh"></i> 刷新';
+    });
 
-  document.getElementById('refreshRoomsBtn').addEventListener('click', async function() {
-    this.disabled = true;
-    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    await renderRooms();
-    this.disabled = false;
-    this.innerHTML = '<i class="bi bi-cloud-refresh"></i> 刷新';
-  });
+    document.getElementById('sendLiveBtn').addEventListener('click', async function() {
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      try {
+        var res = await axios.post('/api/send-live-notify');
+        showMessage(res.data.message || '发送成功', 'info');
+      } catch (e) {
+        showMessage('发送失败: ' + (e.response?.data?.error || e.message), 'error');
+      }
+      this.disabled = false;
+      this.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
+    });
 
-  document.getElementById('sendLiveBtn').addEventListener('click', async function() {
-    this.disabled = true;
-    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    try {
-      var res = await axios.post('/api/send-live-notify');
-      showMessage(res.data.message || '发送成功', 'info');
-    } catch (e) {
-      showMessage('发送失败: ' + (e.response?.data?.error || e.message), 'error');
-    }
-    this.disabled = false;
-    this.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
-  });
+    document.getElementById('singleCheckBtn').addEventListener('click', async function() {
+      var roomId = document.getElementById('singleCheckInput').value.trim();
+      if (!roomId) { showMessage('请输入房间号', 'error'); return; }
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      try {
+        await axios.post('/api/monitor', { force: true, room_id: roomId });
+        showMessage('已触发检查，请稍后刷新查看', 'info');
+        setTimeout(renderRooms, 3000);
+      } catch (e) {
+        showMessage('操作失败: ' + e.message, 'error');
+      }
+      this.disabled = false;
+      this.innerHTML = '查';
+    });
 
-  document.getElementById('singleCheckBtn').addEventListener('click', async function() {
-    var roomId = document.getElementById('singleCheckInput').value.trim();
-    if (!roomId) { showMessage('请输入房间号', 'error'); return; }
-    this.disabled = true;
-    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    try {
-      await axios.post('/api/monitor', { force: true });
-      showMessage('已触发检查，请稍后刷新查看', 'info');
-      setTimeout(renderRooms, 3000);
-    } catch (e) {
-      showMessage('操作失败: ' + e.message, 'error');
-    }
-    this.disabled = false;
-    this.innerHTML = '查';
-  });
+    document.getElementById('clearLogsBtn').addEventListener('click', async function() {
+      if (!confirm('确定清除所有日志吗？')) return;
+      try {
+        await axios.post('/api/logs/clear');
+        showMessage('日志已清除', 'info');
+        await fetchLogs();
+      } catch (e) {
+        showMessage('清除失败: ' + e.message, 'error');
+      }
+    });
 
-  document.getElementById('clearLogsBtn').addEventListener('click', async function() {
-    if (!confirm('确定清除所有日志吗？')) return;
-    try {
-      await axios.post('/api/logs/clear');
-      showMessage('日志已清除', 'info');
-      await fetchLogs();
-    } catch (e) {
-      showMessage('清除失败: ' + e.message, 'error');
-    }
-  });
+    document.getElementById('exportLogsBtn').addEventListener('click', function() {
+      var blob = new Blob([JSON.stringify(allLogs, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'logs.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
 
-  document.getElementById('exportLogsBtn').addEventListener('click', function() {
-    var blob = new Blob([JSON.stringify(allLogs, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = 'logs.json'; a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  function updateNotifyForm() {
-    var val = document.getElementById('protocolSelect').value;
-    var tgTokenGroup = document.getElementById('tgTokenGroup');
-    var receiverLabel = document.getElementById('receiverLabel');
-    var chatId = document.getElementById('chatId');
-    if (val === 'telegram') {
-      tgTokenGroup.style.display = 'block';
-      receiverLabel.textContent = '接收者 ID (chat_id)';
-      chatId.placeholder = '';
-    } else {
-      tgTokenGroup.style.display = 'none';
-      if (val === 'onebot_private') {
-        receiverLabel.textContent = '用户 ID (user_id)';
-        chatId.placeholder = '';
-      } else if (val === 'onebot_group') {
-        receiverLabel.textContent = '群 ID (group_id)';
+    function updateNotifyForm() {
+      var val = document.getElementById('protocolSelect').value;
+      var tgTokenGroup = document.getElementById('tgTokenGroup');
+      var receiverLabel = document.getElementById('receiverLabel');
+      var chatId = document.getElementById('chatId');
+      if (val === 'telegram') {
+        tgTokenGroup.style.display = 'block';
+        receiverLabel.textContent = '接收者 ID (chat_id)';
         chatId.placeholder = '';
       } else {
-        receiverLabel.textContent = '接收者 ID (可选)';
-        chatId.placeholder = '';
+        tgTokenGroup.style.display = 'none';
+        if (val === 'onebot_private') {
+          receiverLabel.textContent = '用户 ID (user_id)';
+          chatId.placeholder = '';
+        } else if (val === 'onebot_group') {
+          receiverLabel.textContent = '群 ID (group_id)';
+          chatId.placeholder = '';
+        } else {
+          receiverLabel.textContent = '接收者 ID (可选)';
+          chatId.placeholder = '';
+        }
       }
     }
+    document.getElementById('protocolSelect').addEventListener('change', updateNotifyForm);
+    updateNotifyForm();
+
+    document.getElementById('addNotifyForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var form = this;
+      var protocol = document.getElementById('protocolSelect').value;
+      var apiUrl = document.getElementById('apiUrl').value;
+      if (protocol === 'telegram') {
+        var token = document.getElementById('tgToken').value.trim();
+        if (!token) { showMessage('请输入 Bot Token', 'error'); return; }
+        apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+      }
+      var formData = new FormData(form);
+      var payload = {
+        name: formData.get('name'),
+        protocol: protocol,
+        api_url: apiUrl,
+        chat_id: formData.get('chat_id') || '',
+        template: formData.get('template') || '',
+        extra_params: {}
+      };
+      if (protocol === 'telegram') {
+        payload.receiver_key = 'chat_id';
+        payload.message_key = 'text';
+      } else if (protocol === 'onebot_private') {
+        payload.receiver_key = 'user_id';
+        payload.message_key = 'message';
+      } else if (protocol === 'onebot_group') {
+        payload.receiver_key = 'group_id';
+        payload.message_key = 'message';
+      } else {
+        payload.receiver_key = '';
+        payload.message_key = '';
+      }
+      try {
+        await axios.post('/api/notify-configs', payload);
+        showMessage('配置添加成功', 'info');
+        await renderConfigs();
+        form.reset();
+        updateNotifyForm();
+      } catch (e) {
+        showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+      }
+    });
+
+    document.addEventListener('click', async function(e) {
+      var btn = e.target.closest('.test-btn');
+      if (btn) {
+        var id = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = '测试中...';
+        try {
+          var res = await axios.post('/api/notify-configs/test', { id: id });
+          showMessage(res.data.message || '测试成功', 'info');
+        } catch (e) {
+          showMessage('测试失败: ' + (e.response?.data?.error || e.message), 'error');
+        }
+        btn.disabled = false;
+        btn.textContent = '测试';
+        return;
+      }
+      var toggleBtn = e.target.closest('.toggle-btn');
+      if (toggleBtn) {
+        var id = toggleBtn.dataset.id;
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = '切换中...';
+        try {
+          await axios.post('/api/notify-configs/toggle', { id: id });
+          showMessage('切换成功', 'info');
+          await renderConfigs();
+        } catch (e) {
+          showMessage('切换失败: ' + (e.response?.data?.error || e.message), 'error');
+          toggleBtn.disabled = false;
+          toggleBtn.textContent = '切换';
+        }
+        return;
+      }
+      var deleteBtn = e.target.closest('.delete-config-btn');
+      if (deleteBtn) {
+        var id = deleteBtn.dataset.id;
+        if (!confirm('确定删除该配置吗？')) return;
+        try {
+          await axios.delete('/api/notify-configs', { data: { id: id } });
+          showMessage('删除成功', 'info');
+          await renderConfigs();
+        } catch (e) {
+          showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
+        }
+      }
+    });
   }
-  document.getElementById('protocolSelect').addEventListener('change', updateNotifyForm);
-  updateNotifyForm();
 
-  document.getElementById('addNotifyForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    var form = this;
-    var protocol = document.getElementById('protocolSelect').value;
-    var apiUrl = document.getElementById('apiUrl').value;
-    if (protocol === 'telegram') {
-      var token = document.getElementById('tgToken').value.trim();
-      if (!token) { showMessage('请输入 Bot Token', 'error'); return; }
-      apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+  window.addEventListener('DOMContentLoaded', function() {
+    console.log('[CTN] 页面初始化');
+    var loginForm = document.getElementById('loginForm');
+    if (!loginForm) {
+      console.error('找不到 loginForm');
+      return;
     }
-    var formData = new FormData(form);
-    var payload = {
-      name: formData.get('name'),
-      protocol: protocol,
-      api_url: apiUrl,
-      chat_id: formData.get('chat_id') || '',
-      template: formData.get('template') || '',
-      extra_params: {}
-    };
-    if (protocol === 'telegram') {
-      payload.receiver_key = 'chat_id';
-      payload.message_key = 'text';
-    } else if (protocol === 'onebot_private') {
-      payload.receiver_key = 'user_id';
-      payload.message_key = 'message';
-    } else if (protocol === 'onebot_group') {
-      payload.receiver_key = 'group_id';
-      payload.message_key = 'message';
-    } else {
-      payload.receiver_key = '';
-      payload.message_key = '';
-    }
-    try {
-      await axios.post('/api/notify-configs', payload);
-      showMessage('配置添加成功', 'info');
-      await renderConfigs();
-      form.reset();
-      updateNotifyForm();
-    } catch (e) {
-      showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
-    }
-  });
-
-  document.addEventListener('click', async function(e) {
-    var btn = e.target.closest('.test-btn');
-    if (btn) {
-      var id = btn.dataset.id;
+    loginForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      console.log('[CTN] 点击登录');
+      var btn = loginForm.querySelector('button');
+      var errorEl = document.getElementById('loginError');
+      errorEl.style.display = 'none';
       btn.disabled = true;
-      btn.textContent = '测试中...';
+      btn.innerHTML = '登录中...';
       try {
-        var res = await axios.post('/api/notify-configs/test', { id: id });
-        showMessage(res.data.message || '测试成功', 'info');
-      } catch (e) {
-        showMessage('测试失败: ' + (e.response?.data?.error || e.message), 'error');
+        var username = document.getElementById('loginUsername').value.trim();
+        var password = document.getElementById('loginPassword').value;
+        if (!username || !password) {
+          throw new Error('请输入用户名和密码');
+        }
+        await login(username, password);
+        console.log('[CTN] 登录成功');
+        location.href = '/';
+      } catch(err) {
+        console.error('[CTN] 登录失败', err);
+        errorEl.innerText = err.message || '登录失败';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '登录';
       }
-      btn.disabled = false;
-      btn.textContent = '测试';
-      return;
-    }
-    var toggleBtn = e.target.closest('.toggle-btn');
-    if (toggleBtn) {
-      var id = toggleBtn.dataset.id;
-      toggleBtn.disabled = true;
-      toggleBtn.textContent = '切换中...';
+    });
+    (async function() {
+      var authed = false;
       try {
-        await axios.post('/api/notify-configs/toggle', { id: id });
-        showMessage('切换成功', 'info');
+        authed = await checkAuth();
+      } catch(e) {
+        console.error('认证检测失败', e);
+      }
+      if (authed) {
+        showMainPanel();
+        await renderRooms();
         await renderConfigs();
-      } catch (e) {
-        showMessage('切换失败: ' + (e.response?.data?.error || e.message), 'error');
-        toggleBtn.disabled = false;
-        toggleBtn.textContent = '切换';
+        await fetchLogs();
+        initMainEvents();
+      } else {
+        showLoginPanel();
       }
-      return;
-    }
-    var deleteBtn = e.target.closest('.delete-config-btn');
-    if (deleteBtn) {
-      var id = deleteBtn.dataset.id;
-      if (!confirm('确定删除该配置吗？')) return;
-      try {
-        await axios.delete('/api/notify-configs', { data: { id: id } });
-        showMessage('删除成功', 'info');
-        await renderConfigs();
-      } catch (e) {
-        showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
-      }
-    }
-  });
-}
-
-window.addEventListener('DOMContentLoaded', async function() {
-  showLoginPanel();
-  var loginForm = document.getElementById('loginForm');
-  loginForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    var btn = loginForm.querySelector('button');
-    var errorEl = document.getElementById('loginError');
-    errorEl.style.display = 'none';
-    btn.disabled = true;
-    btn.innerHTML = '登录中...';
-    try {
-      await login(
-        document.getElementById('loginUsername').value.trim(),
-        document.getElementById('loginPassword').value
-      );
-      location.replace('/');
-    } catch(err) {
-      errorEl.innerText = err.message || '登录失败';
-      errorEl.style.display = 'block';
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '登录';
-    }
+    })();
   });
 
-  var authed = false;
-  try {
-    authed = await checkAuth();
-  } catch(e) {
-    console.error(e);
-  }
-  if (authed) {
-    showMainPanel();
-    await renderRooms();
-    await renderConfigs();
-    await fetchLogs();
-    initMainEvents();
-  }
-});
+  window.onerror = function(msg, url, line, col, error) {
+    console.error('[GLOBAL]', msg, url, line, col, error);
+    reportError(error || new Error(msg), 'global');
+    return false;
+  };
+
+  window.addEventListener('unhandledrejection', function(e) {
+    console.error('Promise错误', e.reason);
+  });
 </script>
 </body>
 </html>`;
@@ -624,20 +740,63 @@ export default {
     if (!backendUrl) {
       return new Response('环境变量 BACKEND_URL 未设置', { status: 500 });
     }
+    const base = backendUrl.replace(/\/$/, '');
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (path.startsWith('/api/')) {
-      const target = backendUrl + path + url.search;
+      const target = base + path + url.search;
       const headers = new Headers(request.headers);
       headers.delete('host');
-      const newReq = new Request(target, {
-        method: request.method,
-        headers: headers,
-        body: (request.method === 'GET' || request.method === 'HEAD') ? null : request.body,
-        redirect: 'manual'
+
+      let cookie = headers.get('Cookie') || '';
+      if (!cookie.includes('ctn32=ctn32')) {
+        cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
+      }
+      headers.set('Cookie', cookie);
+      headers.set('X-CTN-Cookie', 'ctn32=ctn32');
+
+      const requestBody = (request.method === 'GET' || request.method === 'HEAD')
+        ? undefined
+        : await request.arrayBuffer();
+
+      const response = await fetch(
+        new Request(target, {
+          method: request.method,
+          headers: headers,
+          body: requestBody,
+          redirect: 'manual'
+        })
+      );
+
+      const newHeaders = new Headers(response.headers);
+      if (typeof response.headers.getSetCookie === 'function') {
+        const cookies = response.headers.getSetCookie();
+        if (cookies && cookies.length) {
+          newHeaders.delete('Set-Cookie');
+          for (const cookie of cookies) {
+            let fixed = cookie.replace(/SameSite=Lax/gi, 'SameSite=None');
+            if (!fixed.match(/;\s*Secure/gi)) {
+              fixed += '; Secure';
+            }
+            newHeaders.append('Set-Cookie', fixed);
+          }
+        }
+      } else {
+        if (response.headers.get('set-cookie')) {
+          let cookie = response.headers.get('set-cookie');
+          let fixed = cookie.replace(/SameSite=Lax/gi, 'SameSite=None');
+          if (!fixed.match(/;\s*Secure/gi)) {
+            fixed += '; Secure';
+          }
+          newHeaders.set('Set-Cookie', fixed);
+        }
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: newHeaders
       });
-      return fetch(newReq);
     }
 
     return new Response(HTML, {
