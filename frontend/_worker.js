@@ -658,7 +658,7 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口 ==========
+// ========== Worker 主入口（已修复） ==========
 export default {
   async fetch(request, env) {
     const backendUrl = env.BACKEND_URL;
@@ -672,37 +672,58 @@ export default {
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
-      headers.delete('host');
 
-      // 注入 ctn32（如需绕过防火墙）
-      let cookie = headers.get('Cookie') || '';
-      if (!/(^|;\s*)ctn32=ctn32/i.test(cookie)) {
-        cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
+      // 1. 保留 Host 信息（通过 X-Forwarded-Host）
+      headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
+      headers.set('X-Forwarded-Proto', 'https');
+
+      // 2. 强制注入 ctn32 Cookie（若不存在）
+      const oldCookie = request.headers.get('cookie') || '';
+      let newCookie = oldCookie;
+      if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
+        newCookie = oldCookie ? oldCookie + '; ctn32=ctn32' : 'ctn32=ctn32';
       }
-      headers.set('Cookie', cookie);
+      headers.set('Cookie', newCookie);
 
+      // 3. 准备请求体
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
         ? undefined
         : await request.arrayBuffer();
 
-      const response = await fetch(
-        new Request(target, {
-          method: request.method,
-          headers: headers,
-          body: requestBody,
-          redirect: 'follow'
-        })
-      );
+      // 4. 发送请求（捕获异常）
+      let response;
+      try {
+        response = await fetch(
+          new Request(target, {
+            method: request.method,
+            headers: headers,
+            body: requestBody,
+            redirect: 'manual'
+          })
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({
+            error: 'Backend proxy failed',
+            message: e.message,
+            target: target
+          }),
+          {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
 
+      // 5. 构建响应头
       const outHeaders = new Headers();
-      // 复制所有非 Set-Cookie 头
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
           outHeaders.append(key, value);
         }
       }
 
-      // 直接透传 Set-Cookie（不修改）
+      // 6. 透传 Set-Cookie（不修改）
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -715,6 +736,7 @@ export default {
         }
       }
 
+      // 7. 禁止缓存
       outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
       outHeaders.set('Pragma', 'no-cache');
       outHeaders.set('Expires', '0');
@@ -747,7 +769,6 @@ export default {
       });
     }
     if (path === '/') {
-      // 重定向到仪表盘（页面 JS 会检查认证）
       return new Response(null, {
         status: 302,
         headers: { 'Location': '/dashboard/rooms' }
