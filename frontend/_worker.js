@@ -652,7 +652,6 @@ function init() {
       var result = await login(username, password);
       if (result.success) {
         console.log('[CTN] 登录成功，切换面板');
-        // 使用 history.replaceState 避免 URL 变化
         history.replaceState(null, '', '/');
         showMainPanel();
         await renderRooms();
@@ -743,7 +742,7 @@ export default {
           method: request.method,
           headers: headers,
           body: requestBody,
-          redirect: 'follow'  // 自动跟随重定向
+          redirect: 'follow'
         })
       );
 
@@ -755,16 +754,22 @@ export default {
         }
       }
 
-      // 处理 Set-Cookie：重写 Path 为 /
+      // 重写 Set-Cookie：移除 Domain，强制 Path=/，添加 SameSite=None; Secure
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
-          outHeaders.append('Set-Cookie', c.replace(/Path=[^;]+/i, 'Path=/'));
+          const newCookie = c
+            .replace(/Domain=[^;]+/i, '')
+            .replace(/Path=[^;]+/i, 'Path=/');
+          outHeaders.append('Set-Cookie', newCookie + '; SameSite=None; Secure');
         }
       } else {
         const cookie = response.headers.get('set-cookie');
         if (cookie) {
-          outHeaders.append('Set-Cookie', cookie.replace(/Path=[^;]+/i, 'Path=/'));
+          const newCookie = cookie
+            .replace(/Domain=[^;]+/i, '')
+            .replace(/Path=[^;]+/i, 'Path=/');
+          outHeaders.append('Set-Cookie', newCookie + '; SameSite=None; Secure');
         }
       }
 
