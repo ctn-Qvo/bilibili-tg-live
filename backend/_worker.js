@@ -140,13 +140,13 @@ async function fetchLiveStatus(roomId, env) {
   } catch (e) {
     await addLog('warn', `[${roomId}] UAPI失败: ${e.message}，降级官方`, env);
   }
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) { // 增加重试次数
     try {
       const data = await fetchFromBilibiliOfficial(roomId, env);
       if (data) return data;
     } catch (e) {
       await addLog('warn', `[${roomId}] 官方第${attempt+1}次失败: ${e.message}`, env);
-      if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // 递进延迟
     }
   }
   await addLog('error', `[${roomId}] 所有接口失败，使用旧状态`, env);
@@ -173,11 +173,14 @@ async function fetchFromUAPI(roomId, env) {
   };
 }
 
+// 修正：添加 b_lsid Cookie
 async function fetchFromBilibiliOfficial(roomId, env) {
   const url = 'https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?' +
     'room_id=' + encodeURIComponent(roomId) +
     '&protocol=0,1&format=0,1,2&codec=0,1,2';
   const headers = buildBrowserHeaders();
+  // 添加 Cookie（固定 b_lsid，从你的 curl 中复制）
+  headers['Cookie'] = 'b_lsid=ABEAE2D5_19FA4B82D32';
   const resp = await fetch(url, { headers });
   if (!resp.ok) throw new Error('官方失败 (' + resp.status + ')');
   const json = await resp.json();
@@ -370,7 +373,6 @@ function isAuthenticated(request, env) {
   } catch { return false; }
 }
 
-// 动态 CORS 函数
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || 'https://live.ctn32.us.kg';
   const allowedOrigins = [
