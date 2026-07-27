@@ -45,7 +45,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 </style>
 `;
 
-// ========== 公共 JavaScript（所有页面共享） ==========
+// ========== 公共 JavaScript ==========
 const COMMON_JS = `
 function closest(el, selector) {
   while (el && el !== document) {
@@ -674,7 +674,7 @@ export default {
       const headers = new Headers(request.headers);
       headers.delete('host');
 
-      // 强制注入 ctn32
+      // 注入 ctn32（如需绕过防火墙）
       let cookie = headers.get('Cookie') || '';
       if (!/(^|;\s*)ctn32=ctn32/i.test(cookie)) {
         cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
@@ -695,28 +695,23 @@ export default {
       );
 
       const outHeaders = new Headers();
+      // 复制所有非 Set-Cookie 头
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
           outHeaders.append(key, value);
         }
       }
 
-      // 重写 Set-Cookie
+      // 直接透传 Set-Cookie（不修改）
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
-          const newCookie = c
-            .replace(/Domain=[^;]+/i, '')
-            .replace(/Path=[^;]+/i, 'Path=/');
-          outHeaders.append('Set-Cookie', newCookie + '; SameSite=None; Secure');
+          outHeaders.append('Set-Cookie', c);
         }
       } else {
         const cookie = response.headers.get('set-cookie');
         if (cookie) {
-          const newCookie = cookie
-            .replace(/Domain=[^;]+/i, '')
-            .replace(/Path=[^;]+/i, 'Path=/');
-          outHeaders.append('Set-Cookie', newCookie + '; SameSite=None; Secure');
+          outHeaders.set('Set-Cookie', cookie);
         }
       }
 
