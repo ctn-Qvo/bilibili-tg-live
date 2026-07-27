@@ -2,7 +2,6 @@
 const CONFIG = {
   MAIN_API: 'https://uapis.cn/api/v1/social/bilibili/liveroom',
   USER_API: 'https://uapis.cn/api/v1/social/bilibili/userinfo',
-  // 已移除 BILIBILI_BASE_URL
   IS_LIVE_STATUS: [1],
   CACHE_TTL: 3600,
   USER_INFO_TTL: 86400,
@@ -104,7 +103,7 @@ function getRandomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-// ========== 请求头构建（用于 UAPI） ==========
+// ========== 请求头构建（UAPI，已移除 br 以兼容） ==========
 function buildBrowserHeaders() {
   const ua = getRandomUserAgent();
   const isChrome = ua.includes('Chrome') && !ua.includes('Edg');
@@ -119,7 +118,7 @@ function buildBrowserHeaders() {
     'User-Agent': ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Encoding': 'gzip, deflate',           // 移除 br，最兼容
     'Referer': 'https://live.bilibili.com/',
     'Origin': 'https://live.bilibili.com',
     'Sec-Fetch-Site': 'same-origin',
@@ -179,16 +178,14 @@ async function fetchFromUAPI(roomId, env) {
   };
 }
 
-// ========== 官方接口（直接拼接 URL，不使用配置变量） ==========
+// ========== 官方接口（已移除 Accept-Encoding 中的 br，兼容） ==========
 async function fetchFromBilibiliOfficial(roomId, env) {
-  // 直接硬编码 URL 模板，动态插入 room_id
   const url = 'https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&room_id=' + encodeURIComponent(roomId);
-
   const headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5127.247 Safari/537.36 Edg/109.0.5127.247',
     'Accept': '*/*',
     'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Encoding': 'gzip, deflate',           // 移除 br
     'Referer': 'https://live.bilibili.com/' + roomId,
     'Origin': 'https://live.bilibili.com',
     'Sec-Fetch-Site': 'same-origin',
@@ -198,15 +195,10 @@ async function fetchFromBilibiliOfficial(roomId, env) {
     'Cache-Control': 'max-age=0',
     'Connection': 'keep-alive'
   };
-
   const resp = await fetch(url, { headers });
-  if (!resp.ok) {
-    throw new Error('官方失败 (' + resp.status + ')');
-  }
+  if (!resp.ok) throw new Error('官方失败 (' + resp.status + ')');
   const json = await resp.json();
-  if (json.code !== 0 || !json.data) {
-    throw new Error('官方返回错误: ' + (json.msg || json.message));
-  }
+  if (json.code !== 0 || !json.data) throw new Error('官方返回错误: ' + (json.msg || json.message));
   const d = json.data;
   return {
     room_id: d.room_id || roomId,
