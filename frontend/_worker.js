@@ -97,7 +97,7 @@ function closest(el, selector) {
   return null;
 }
 
-// --- Cookie 设置（仅用于 ctn32，由 Worker 强制注入，前端保留无作用）---
+// --- Cookie 设置（由 Worker 注入，前端保留空函数）---
 function ensureCTNCookie() {}
 
 if (typeof axios === 'undefined') {
@@ -246,9 +246,10 @@ async function login(username, password) {
 }
 
 function logout() {
-  axios.post('/api/logout');
-  document.cookie = 'auth=; Max-Age=0; path=/;';
-  location.replace('/');
+  axios.post('/api/logout')
+    .finally(function() {
+      location.replace('/');
+    });
 }
 
 function showLoginPanel() {
@@ -648,19 +649,18 @@ function init() {
       if (!username || !password) {
         throw new Error('请输入用户名和密码');
       }
-      await login(username, password);
-      console.log('[CTN] 登录成功，验证 Session');
-      // 验证 Cookie 是否已生效
-      var check = await axios.get('/api/me?_=' + Date.now());
-      if (check.data && check.data.username) {
-        console.log('[CTN] Session 有效，进入管理面板');
+      var result = await login(username, password);
+      if (result.success) {
+        console.log('[CTN] 登录成功，切换面板');
+        // 使用 history.replaceState 避免 URL 变化
+        history.replaceState(null, '', '/');
         showMainPanel();
         await renderRooms();
         await renderConfigs();
         await fetchLogs();
         initMainEvents();
       } else {
-        throw new Error('登录成功但 Session 未建立');
+        throw new Error('登录失败');
       }
     } catch(err) {
       console.error('[CTN] 登录失败', err);
@@ -721,13 +721,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // 所有 /api 请求代理到后端
     if (path.startsWith('/api/')) {
       const target = base + path + url.search;
       const headers = new Headers(request.headers);
       headers.delete('host');
 
+      // 强制注入 ctn32 Cookie（忽略大小写）
       let cookie = headers.get('Cookie') || '';
-      if (!cookie.includes('ctn32=ctn32')) {
+      if (!/(^|;\s*)ctn32=ctn32/i.test(cookie)) {
         cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
       }
       headers.set('Cookie', cookie);
@@ -741,7 +743,7 @@ export default {
           method: request.method,
           headers: headers,
           body: requestBody,
-          redirect: 'manual'
+          redirect: 'follow'  // 自动跟随重定向
         })
       );
 
@@ -752,20 +754,21 @@ export default {
           outHeaders.append(key, value);
         }
       }
-      // 处理 Set-Cookie
+
+      // 处理 Set-Cookie：重写 Path 为 /
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
-          outHeaders.append('Set-Cookie', c);
+          outHeaders.append('Set-Cookie', c.replace(/Path=[^;]+/i, 'Path=/'));
         }
       } else {
         const cookie = response.headers.get('set-cookie');
         if (cookie) {
-          outHeaders.append('Set-Cookie', cookie);
+          outHeaders.append('Set-Cookie', cookie.replace(/Path=[^;]+/i, 'Path=/'));
         }
       }
 
-      // 强制禁止缓存
+      // 禁止缓存
       outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
       outHeaders.set('Pragma', 'no-cache');
       outHeaders.set('Expires', '0');
@@ -776,6 +779,7 @@ export default {
       });
     }
 
+    // SPA: 非 API 请求返回 HTML
     return new Response(HTML, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
