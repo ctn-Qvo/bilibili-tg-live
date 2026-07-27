@@ -659,7 +659,7 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口（含完整调试日志） ==========
+// ========== Worker 主入口（已修复） ==========
 export default {
   async fetch(request, env) {
     const backendUrl = env.BACKEND_URL;
@@ -677,16 +677,17 @@ export default {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 强制设置 Origin 和 Referer（解决自定义域名跨域问题）
+      // 1. 设置正确的 Host 和 Origin（解决自定义域名问题）
+      headers.set('Host', 'live-api.ctn32.us.kg');
       headers.set('Origin', 'https://live.ctn32.us.kg');
       headers.set('Referer', 'https://live.ctn32.us.kg/');
 
-      // 保留原始 Host 信息
+      // 2. 保留原始 Host 信息
       const originalHost = request.headers.get('Host') || '';
       headers.set('X-Forwarded-Host', originalHost);
       headers.set('X-Forwarded-Proto', 'https');
 
-      // 注入 ctn32 Cookie（绕过防火墙）
+      // 3. 注入 ctn32 Cookie
       const oldCookie = request.headers.get('cookie') || '';
       let newCookie = oldCookie;
       if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
@@ -719,21 +720,14 @@ export default {
             method: request.method,
             headers: headers,
             body: requestBody,
-            redirect: 'manual'
+            redirect: 'follow' // 改为 follow
           })
         );
       } catch (e) {
         console.error('[Proxy] Fetch error:', {
           message: e.message,
           target,
-          stack: e.stack,
-          requestHeaders: {
-            origin: headers.get('Origin'),
-            referer: headers.get('Referer'),
-            cookie: headers.get('Cookie'),
-            host: headers.get('Host'),
-            'user-agent': headers.get('User-Agent')
-          }
+          stack: e.stack
         });
         return new Response(
           JSON.stringify({
