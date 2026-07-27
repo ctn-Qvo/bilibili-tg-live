@@ -1,4 +1,5 @@
-const HTML = `<!DOCTYPE html>
+const HTML = `
+<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -732,7 +733,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
   });
 </script>
 </body>
-</html>`;
+</html>
+`;
 
 export default {
   async fetch(request, env) {
