@@ -86,7 +86,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
   </div>
 </div>
 <script>
-// --- 辅助函数：兼容 closest ---
+// --- 兼容 closest ---
 function closest(el, selector) {
   while (el && el !== document) {
     if (el.matches && el.matches(selector)) {
@@ -97,21 +97,14 @@ function closest(el, selector) {
   return null;
 }
 
-// --- Cookie 确保 ---
-(function() {
-  function ensureCTNCookie() {
-    try {
-      if (document.cookie.indexOf('ctn32=ctn32') === -1) {
-        document.cookie = 'ctn32=ctn32; path=/; max-age=86400; SameSite=None; Secure';
-      }
-    } catch(e) {
-      console.warn('CTN cookie init failed', e);
-    }
-  }
-  ensureCTNCookie();
-})();
+// --- Cookie 设置（仅用于 ctn32，由 Worker 强制注入，前端保留无作用）---
+function ensureCTNCookie() {}
 
-// --- 必须先定义 showMessage，因为拦截器会用到 ---
+if (typeof axios === 'undefined') {
+  alert('Axios 加载失败，请刷新页面或检查网络。');
+  throw new Error('axios missing');
+}
+
 function showMessage(msg, type) {
   type = type || 'info';
   var box = document.createElement('div');
@@ -128,24 +121,12 @@ function showMessage(msg, type) {
   }, 8000);
 }
 
-// --- 检查 axios ---
-if (typeof axios === 'undefined') {
-  alert('Axios 加载失败，请刷新页面或检查网络。');
-  throw new Error('axios missing');
-}
-
-// --- axios 配置 ---
 axios.defaults.baseURL = '';
 axios.defaults.withCredentials = true;
 axios.defaults.timeout = 10000;
 
 axios.interceptors.request.use(function(config) {
-  // 确保 ctn32 Cookie 存在
-  try {
-    if (document.cookie.indexOf('ctn32=ctn32') === -1) {
-      document.cookie = 'ctn32=ctn32; path=/; max-age=86400; SameSite=None; Secure';
-    }
-  } catch(e) {}
+  ensureCTNCookie();
   return config;
 }, function(error) {
   return Promise.reject(error);
@@ -237,19 +218,15 @@ window.viewErrorDetail = async function(id) {
 
 async function checkAuth() {
   try {
-    var res = await axios.get('/api/me');
-    var contentType = res.headers['content-type'] || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error('服务器返回非 JSON 响应，请检查后端服务。');
-    }
-    return res.status === 200 && res.data && res.data.username;
-  } catch (e) {
-    await showErrorWithDetail('认证检查失败，请检查网络或后端服务。', e, 'checkAuth');
+    var res = await axios.get('/api/me?_=' + Date.now());
+    console.log('AUTH:', res.status, res.data);
+    return res.data && res.data.username;
+  } catch(e) {
+    console.log('AUTH ERROR', e.response);
     return false;
   }
 }
 
-// --- 登录改用 axios ---
 async function login(username, password) {
   var res = await axios.post(
     '/api/login?_=' + Date.now(),
@@ -257,7 +234,8 @@ async function login(username, password) {
     {
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
       }
     }
   );
@@ -649,7 +627,6 @@ function initMainEvents() {
   });
 }
 
-// --- 初始化函数 ---
 function init() {
   console.log('[CTN] 页面初始化');
   var loginForm = document.getElementById('loginForm');
@@ -672,8 +649,19 @@ function init() {
         throw new Error('请输入用户名和密码');
       }
       await login(username, password);
-      console.log('[CTN] 登录成功');
-      location.href = '/';
+      console.log('[CTN] 登录成功，验证 Session');
+      // 验证 Cookie 是否已生效
+      var check = await axios.get('/api/me?_=' + Date.now());
+      if (check.data && check.data.username) {
+        console.log('[CTN] Session 有效，进入管理面板');
+        showMainPanel();
+        await renderRooms();
+        await renderConfigs();
+        await fetchLogs();
+        initMainEvents();
+      } else {
+        throw new Error('登录成功但 Session 未建立');
+      }
     } catch(err) {
       console.error('[CTN] 登录失败', err);
       errorEl.innerText = err.message || '登录失败';
@@ -703,14 +691,12 @@ function init() {
   })();
 }
 
-// --- 根据 DOM 状态执行初始化 ---
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
   init();
 }
 
-// --- 全局错误捕获 ---
 window.onerror = function(msg, url, line, col, error) {
   console.error('[GLOBAL]', msg, url, line, col, error);
   reportError(error || new Error(msg), 'global');
@@ -759,26 +745,34 @@ export default {
         })
       );
 
-      const newHeaders = new Headers(response.headers);
-      // 处理多个 Set-Cookie
+      const outHeaders = new Headers();
+      // 复制所有非 Set-Cookie 头
+      for (const [key, value] of response.headers) {
+        if (key.toLowerCase() !== 'set-cookie') {
+          outHeaders.append(key, value);
+        }
+      }
+      // 处理 Set-Cookie
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
-        if (cookies && cookies.length) {
-          newHeaders.delete('Set-Cookie');
-          cookies.forEach(function(c) {
-            newHeaders.append('Set-Cookie', c);
-          });
+        for (const c of cookies) {
+          outHeaders.append('Set-Cookie', c);
         }
       } else {
-        const setCookie = response.headers.get('set-cookie');
-        if (setCookie) {
-          newHeaders.set('Set-Cookie', setCookie);
+        const cookie = response.headers.get('set-cookie');
+        if (cookie) {
+          outHeaders.append('Set-Cookie', cookie);
         }
       }
 
+      // 强制禁止缓存
+      outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+      outHeaders.set('Pragma', 'no-cache');
+      outHeaders.set('Expires', '0');
+
       return new Response(response.body, {
         status: response.status,
-        headers: newHeaders
+        headers: outHeaders
       });
     }
 
