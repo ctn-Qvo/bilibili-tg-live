@@ -96,11 +96,8 @@ jobs:
         id: extract_urls
         if: github.event.inputs.skip_health_check != true
         run: |
-          # 从 backend/wrangler.toml 提取 FRONTEND_URL（CORS 允许的源，也是前端域名）
           FRONTEND_URL=$(grep -E '^FRONTEND_URL' backend/wrangler.toml | sed -E 's/^[^=]+=\s*"([^"]+)"$/\1/')
-          # 从 frontend/wrangler.toml 提取 BACKEND_URL（后端 API 地址）
           BACKEND_URL=$(grep -E '^BACKEND_URL' frontend/wrangler.toml | sed -E 's/^[^=]+=\s*"([^"]+)"$/\1/')
-          # 如果提取失败，使用默认值（可根据实际情况修改）
           if [ -z "$FRONTEND_URL" ]; then
             FRONTEND_URL="https://live.ctn32.us.kg"
           fi
@@ -121,7 +118,7 @@ jobs:
             exit 0
           fi
           echo "检查前端服务: $FRONTEND_URL"
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_URL")
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: ctn32=ctn32" "$FRONTEND_URL")
           echo "前端状态码: $HTTP_CODE"
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 403 ] || [ "$HTTP_CODE" -eq 401 ]; then
             echo "前端服务正常"
@@ -137,13 +134,11 @@ jobs:
             echo "BACKEND_URL 未定义，跳过后端健康检查"
             exit 0
           fi
-          HEALTH_URL="${BACKEND_URL}/api/rooms"
+          HEALTH_URL="${BACKEND_URL}/api/health"
           echo "检查后端服务: $HEALTH_URL"
-          # 携带 ctn32 Cookie 绕过 Cloudflare 防火墙
           HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: ctn32=ctn32" "$HEALTH_URL")
           echo "后端状态码: $HTTP_CODE"
-          # 允许 200, 401, 403（403 可能是防火墙但服务仍可达）
-          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 401 ] || [ "$HTTP_CODE" -eq 403 ]; then
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 403 ]; then
             echo "后端服务正常"
           else
             echo "后端服务异常 (HTTP $HTTP_CODE)，请手动验证"
