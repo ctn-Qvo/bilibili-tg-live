@@ -370,9 +370,17 @@ function isAuthenticated(request, env) {
   } catch { return false; }
 }
 
-function corsHeaders(env) {
+// 动态 CORS 函数
+function corsHeaders(request, env) {
+  const origin = request.headers.get('Origin') || 'https://live.ctn32.us.kg';
+  const allowedOrigins = [
+    'https://live.ctn32.us.kg',
+    'https://bilibili-live-frontend.ctn32.workers.dev',
+    'https://live.ctn32.us.kg:443'
+  ];
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   return {
-    'Access-Control-Allow-Origin': 'https://live.ctn32.us.kg',
+    'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Credentials': 'true',
@@ -380,12 +388,12 @@ function corsHeaders(env) {
   };
 }
 
-function jsonResponse(data, status = 200, env) {
+function jsonResponse(data, status = 200, request, env) {
   return new Response(JSON.stringify(data), {
     status: status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(env)
+      ...corsHeaders(request, env)
     }
   });
 }
@@ -396,36 +404,38 @@ async function handleRequest(request, env) {
     const path = url.pathname;
     const method = request.method;
 
-    if (method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env) });
+    if (method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders(request, env) });
+    }
 
     // 公开健康检查
     if (path === '/api/health' && method === 'GET') {
-      return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, env);
+      return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, request, env);
     }
 
     // 登录
     if (path === '/api/login' && method === 'POST') {
       const cookie = request.headers.get('Cookie') || '';
       if (!cookie.includes('ctn32=ctn32')) {
-        return jsonResponse({ error: '非法访问' }, 403, env);
+        return jsonResponse({ error: '非法访问' }, 403, request, env);
       }
       let body; try { body = await request.json(); } catch { body = {}; }
       const { username, password } = body;
       if (username === env.ADMIN_USER && password === env.ADMIN_PASSWORD) {
         const auth = btoa(username + ':' + password);
         const headers = {
-          ...corsHeaders(env),
+          ...corsHeaders(request, env),
           'Set-Cookie': 'auth=' + auth + '; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=None',
           'Content-Type': 'application/json'
         };
         return new Response(JSON.stringify({ success: true }), { headers });
-      } else return jsonResponse({ success: false, error: '用户名或密码错误' }, 401, env);
+      } else return jsonResponse({ success: false, error: '用户名或密码错误' }, 401, request, env);
     }
 
     // 登出
     if (path === '/api/logout' && method === 'POST') {
       const headers = {
-        ...corsHeaders(env),
+        ...corsHeaders(request, env),
         'Set-Cookie': 'auth=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=None',
         'Content-Type': 'application/json'
       };
@@ -434,12 +444,12 @@ async function handleRequest(request, env) {
 
     // 当前用户
     if (path === '/api/me' && method === 'GET') {
-      if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, env);
-      return jsonResponse({ username: env.ADMIN_USER }, 200, env);
+      if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, request, env);
+      return jsonResponse({ username: env.ADMIN_USER }, 200, request, env);
     }
 
     // 以下需要认证
-    if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, env);
+    if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, request, env);
 
     // 房间列表（只读 D1，不调用外部 API）
     if (path === '/api/rooms' && method === 'GET') {
@@ -448,76 +458,76 @@ async function handleRequest(request, env) {
       for (const id of rooms) {
         states[id] = await getMonitorState(env, id);
       }
-      return jsonResponse({ rooms, states }, 200, env);
+      return jsonResponse({ rooms, states }, 200, request, env);
     }
 
     // 添加房间
     if (path === '/api/rooms' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
-      if (!roomId) return jsonResponse({ error: '缺少房间号' }, 400, env);
+      if (!roomId) return jsonResponse({ error: '缺少房间号' }, 400, request, env);
       await addRoom(env, roomId);
       await addLog('info', '添加房间 ' + roomId, env);
       try { await processRoom(roomId, env, { force: true }); } catch (e) {}
-      return jsonResponse({ success: true }, 200, env);
+      return jsonResponse({ success: true }, 200, request, env);
     }
 
     // 删除房间
     if (path === '/api/rooms' && method === 'DELETE') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
-      if (!roomId) return jsonResponse({ error: '缺少房间号' }, 400, env);
+      if (!roomId) return jsonResponse({ error: '缺少房间号' }, 400, request, env);
       await removeRoom(env, roomId);
       await addLog('info', '删除房间 ' + roomId, env);
-      return jsonResponse({ success: true }, 200, env);
+      return jsonResponse({ success: true }, 200, request, env);
     }
 
     // 日志
     if (path === '/api/logs' && method === 'GET') {
       const logs = await getLogs(env);
-      return jsonResponse(logs, 200, env);
+      return jsonResponse(logs, 200, request, env);
     }
     if (path === '/api/logs/clear' && method === 'POST') {
       await clearLogs(env);
-      return jsonResponse({ success: true }, 200, env);
+      return jsonResponse({ success: true }, 200, request, env);
     }
 
     // 通知配置
     if (path === '/api/notify-configs' && method === 'GET') {
       const configs = await getNotifyConfigs(env);
-      return jsonResponse(configs, 200, env);
+      return jsonResponse(configs, 200, request, env);
     }
     if (path === '/api/notify-configs' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const { name, protocol, api_url, chat_id, template, extra_params } = body;
-      if (!name) return jsonResponse({ error: '缺少名称' }, 400, env);
+      if (!name) return jsonResponse({ error: '缺少名称' }, 400, request, env);
       const config = { name, protocol: protocol || 'telegram', api_url: api_url || '', chat_id: chat_id || '', receiver_key: body.receiver_key || 'chat_id', message_key: body.message_key || 'text', template: template || CONFIG.DEFAULT_TEMPLATE, extra_params: extra_params || {}, enabled: true };
       const result = await addNotifyConfig(env, config);
       await addLog('info', '添加通知配置 ' + name, env);
-      return jsonResponse(result, 200, env);
+      return jsonResponse(result, 200, request, env);
     }
     if (path === '/api/notify-configs' && method === 'DELETE') {
       let body; try { body = await request.json(); } catch { body = {}; }
-      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, env);
+      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, request, env);
       await deleteNotifyConfig(env, id);
       await addLog('info', '删除通知配置 ' + id, env);
-      return jsonResponse({ success: true }, 200, env);
+      return jsonResponse({ success: true }, 200, request, env);
     }
     if (path === '/api/notify-configs/toggle' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
-      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, env);
-      try { await toggleNotifyConfig(env, id); await addLog('info', '切换通知配置状态 ' + id, env); return jsonResponse({ success: true }, 200, env); } catch (e) { return jsonResponse({ error: e.message }, 404, env); }
+      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, request, env);
+      try { await toggleNotifyConfig(env, id); await addLog('info', '切换通知配置状态 ' + id, env); return jsonResponse({ success: true }, 200, request, env); } catch (e) { return jsonResponse({ error: e.message }, 404, request, env); }
     }
     if (path === '/api/notify-configs/test' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
-      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, env);
+      const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, request, env);
       const configs = await getNotifyConfigs(env); const config = configs.find(c => c.id === id);
-      if (!config) return jsonResponse({ error: '配置不存在' }, 404, env);
-      const roomIds = await getRoomList(env); if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, env);
+      if (!config) return jsonResponse({ error: '配置不存在' }, 404, request, env);
+      const roomIds = await getRoomList(env); if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, request, env);
       const roomId = toRoomId(roomIds[Math.floor(Math.random() * roomIds.length)]);
       try {
         const current = await fetchLiveStatus(roomId, env);
-        if (!current) return jsonResponse({ error: '获取直播状态失败' }, 500, env);
+        if (!current) return jsonResponse({ error: '获取直播状态失败' }, 500, request, env);
         const liveStatus = Number(current.live_status ?? 0);
         current.live_status = liveStatus;
         const isLive = CONFIG.IS_LIVE_STATUS.includes(liveStatus);
@@ -526,8 +536,8 @@ async function handleRequest(request, env) {
         const text = await buildNotification(roomId, current, env, eventType);
         const testText = '[测试] ' + text;
         const result = await sendNotificationToConfig(config, testText, { event: eventType, room_id: roomId, ...current });
-        if (result.success) { await addLog('info', '测试通知成功 ' + config.name + ' 房间 ' + roomId, env); return jsonResponse({ success: true, message: '测试通知发送成功' }, 200, env); } else { return jsonResponse({ success: false, error: result.error }, 500, env); }
-      } catch (e) { return jsonResponse({ error: e.message }, 500, env); }
+        if (result.success) { await addLog('info', '测试通知成功 ' + config.name + ' 房间 ' + roomId, env); return jsonResponse({ success: true, message: '测试通知发送成功' }, 200, request, env); } else { return jsonResponse({ success: false, error: result.error }, 500, request, env); }
+      } catch (e) { return jsonResponse({ error: e.message }, 500, request, env); }
     }
 
     // 手动触发监控
@@ -536,17 +546,17 @@ async function handleRequest(request, env) {
       const force = body.force === true;
       await addLog('info', force ? '手动强制刷新' : '手动检查', env);
       const result = await monitorAll(env, { force: force });
-      return jsonResponse(result, 200, env);
+      return jsonResponse(result, 200, request, env);
     }
 
     // 模拟直播通知
     if (path === '/api/send-live-notify' && method === 'POST') {
       const roomIds = await getRoomList(env);
-      if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, env);
+      if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, request, env);
       const roomId = toRoomId(roomIds[Math.floor(Math.random() * roomIds.length)]);
       try {
         const current = await fetchLiveStatus(roomId, env);
-        if (!current) return jsonResponse({ error: '获取直播状态失败' }, 500, env);
+        if (!current) return jsonResponse({ error: '获取直播状态失败' }, 500, request, env);
         const liveStatus = Number(current.live_status ?? 0);
         current.live_status = liveStatus;
         const isLive = CONFIG.IS_LIVE_STATUS.includes(liveStatus);
@@ -554,8 +564,8 @@ async function handleRequest(request, env) {
         const eventType = isLive ? 'live_start' : 'live_end';
         const text = await buildNotification(roomId, current, env, eventType);
         const success = await sendNotification(text, env, { event: eventType, room_id: roomId, ...current });
-        if (success) { await addLog('info', '手动发送模拟通知 ' + roomId, env); return jsonResponse({ success: true, message: '已发送 ' + eventType + ' 通知' }, 200, env); } else { return jsonResponse({ success: false, error: '通知发送失败，请检查配置' }, 500, env); }
-      } catch (e) { return jsonResponse({ error: e.message }, 500, env); }
+        if (success) { await addLog('info', '手动发送模拟通知 ' + roomId, env); return jsonResponse({ success: true, message: '已发送 ' + eventType + ' 通知' }, 200, request, env); } else { return jsonResponse({ success: false, error: '通知发送失败，请检查配置' }, 500, request, env); }
+      } catch (e) { return jsonResponse({ error: e.message }, 500, request, env); }
     }
 
     // 客户端错误上报
@@ -569,25 +579,26 @@ async function handleRequest(request, env) {
         context: body.context || 'unknown',
         extra: body.extra || {}
       });
-      return jsonResponse({ id, success: true }, 200, env);
+      return jsonResponse({ id, success: true }, 200, request, env);
     }
     if (path === '/api/client-errors' && method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit')) || 50;
       const errors = await getClientErrors(env, limit);
-      return jsonResponse(errors, 200, env);
+      return jsonResponse(errors, 200, request, env);
     }
     if (path.startsWith('/api/client-errors/') && method === 'GET') {
       const id = path.split('/')[3];
-      if (!id) return jsonResponse({ error: '缺少错误ID' }, 400, env);
+      if (!id) return jsonResponse({ error: '缺少错误ID' }, 400, request, env);
       const error = await getClientError(env, id);
-      if (!error) return jsonResponse({ error: '错误不存在' }, 404, env);
-      return jsonResponse(error, 200, env);
+      if (!error) return jsonResponse({ error: '错误不存在' }, 404, request, env);
+      return jsonResponse(error, 200, request, env);
     }
 
-    return jsonResponse({ error: 'Not Found' }, 404, env);
+    return jsonResponse({ error: 'Not Found' }, 404, request, env);
   } catch (e) {
     console.error('Unhandled error:', e);
-    return jsonResponse({ error: '服务器内部错误: ' + e.message }, 500, env);
+    await addLog('error', 'Unhandled exception: ' + e.message, env);
+    return jsonResponse({ error: '服务器内部错误: ' + e.message }, 500, request, env);
   }
 }
 
@@ -597,7 +608,7 @@ export default {
       return await handleRequest(request, env);
     } catch (e) {
       console.error('Fatal fetch error:', e);
-      return jsonResponse({ error: '致命错误: ' + e.message }, 500, env);
+      return jsonResponse({ error: '致命错误: ' + e.message }, 500, request, env);
     }
   },
   async scheduled(event, env) {
