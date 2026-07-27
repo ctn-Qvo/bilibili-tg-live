@@ -1,4 +1,3 @@
-// ========== 配置 ==========
 const CONFIG = {
   MAIN_API: 'https://uapis.cn/api/v1/social/bilibili/liveroom',
   USER_API: 'https://uapis.cn/api/v1/social/bilibili/userinfo',
@@ -11,7 +10,6 @@ const CONFIG = {
   DEFAULT_TEMPLATE: `[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}`
 };
 
-// ========== 工具函数 ==========
 function toRoomId(id) { return String(id).trim(); }
 function buildCacheKey(...parts) { return parts.join(':'); }
 function normalizeCover(url) { if (!url) return ''; return url.split('?')[0].trim(); }
@@ -21,7 +19,6 @@ function renderTemplate(template, vars) { if (!template) template = CONFIG.DEFAU
 async function getCache(key) { const cache = caches.default; const req = new Request('https://cache/' + key); const resp = await cache.match(req); if (resp && resp.ok) return resp.json(); return null; }
 async function setCache(key, data, ttl) { ttl = ttl || CONFIG.CACHE_TTL; const cache = caches.default; const resp = new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=' + ttl } }); await cache.put(new Request('https://cache/' + key), resp); }
 
-// ========== D1 操作 ==========
 async function getRoomList(env) { const { results } = await env.DB.prepare('SELECT room_id FROM rooms').all(); return results.map(row => row.room_id); }
 async function addRoom(env, roomId) { await env.DB.prepare('INSERT OR IGNORE INTO rooms (room_id) VALUES (?)').bind(roomId).run(); }
 async function removeRoom(env, roomId) { await env.DB.prepare('DELETE FROM rooms WHERE room_id = ?').bind(roomId).run(); await env.DB.prepare('DELETE FROM monitor_states WHERE room_id = ?').bind(roomId).run(); }
@@ -45,15 +42,20 @@ async function getLogs(env) { const { results } = await env.DB.prepare('SELECT t
 async function addLog(level, message, env) { const time = new Date().toISOString(); await env.DB.prepare('INSERT INTO system_logs (time, level, message) VALUES (?, ?, ?)').bind(time, level, message).run(); await env.DB.prepare(`DELETE FROM system_logs WHERE id NOT IN (SELECT id FROM system_logs ORDER BY time DESC LIMIT ?)`).bind(CONFIG.MAX_LOG_ENTRIES).run(); console.log(`[${time}] [${level.toUpperCase()}] ${message}`); }
 async function clearLogs(env) { await env.DB.prepare('DELETE FROM system_logs').run(); await addLog('info', '日志已清除', env); }
 
-// ========== 请求头伪装工具 ==========
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.4078.81',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.4461.106 Safari/537.36 Edg/129.0.4461.106',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0',
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
-  'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
+  'Mozilla/5.0 (Android 14; Mobile; rv:109.0) Gecko/109.0 Firefox/121.0',
+  'Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0'
 ];
 
 function getRandomUserAgent() {
@@ -77,7 +79,6 @@ function buildBrowserHeaders() {
   };
 }
 
-// ========== 外部 API（含多级降级 + 请求头伪装）==========
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   try {
@@ -95,14 +96,10 @@ async function fetchLiveStatus(roomId, env) {
   return null;
 }
 
-// UAPI 也使用伪装请求头（但保留 Authorization 用于提高限额）
 async function fetchFromUAPI(roomId, env) {
   const url = CONFIG.MAIN_API + '?room_id=' + encodeURIComponent(roomId);
-  const headers = buildBrowserHeaders();  // 使用随机 UA 和完整头
-  // 若有 UAPI_KEY，添加认证
-  if (env.UAPI_KEY) {
-    headers['Authorization'] = 'Bearer ' + env.UAPI_KEY;
-  }
+  const headers = buildBrowserHeaders();
+  if (env.UAPI_KEY) headers['Authorization'] = 'Bearer ' + env.UAPI_KEY;
   const resp = await fetch(url, { headers });
   if (!resp.ok) {
     if (resp.status === 429) throw new Error('UAPI限流(429)');
@@ -113,7 +110,6 @@ async function fetchFromUAPI(roomId, env) {
   return data;
 }
 
-// B站官方接口同样伪装
 async function fetchFromBilibiliOfficial(roomId, env) {
   const url = 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id=' + encodeURIComponent(roomId);
   const headers = buildBrowserHeaders();
@@ -135,7 +131,6 @@ async function fetchFromBilibiliOfficial(roomId, env) {
   };
 }
 
-// 用户信息接口也统一伪装（可选）
 async function fetchUserInfo(uid) {
   const cacheKey = buildCacheKey('userinfo', uid);
   const cached = await getCache(cacheKey);
@@ -150,7 +145,6 @@ async function fetchUserInfo(uid) {
   return data;
 }
 
-// ========== 通知 ==========
 async function sendNotificationToConfig(config, text, extra) { extra = extra || {}; try { let payload = {}; if (config.protocol === 'discord') { payload = { content: text }; } else if (config.protocol === 'custom_webhook') { payload = extra; } else { const receiverKey = config.receiver_key || 'chat_id'; const messageKey = config.message_key || 'text'; payload[receiverKey] = config.chat_id; payload[messageKey] = text; } if (config.extra_params) Object.assign(payload, config.extra_params); const resp = await fetch(config.api_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (resp.ok) return { success: true }; const errText = await resp.text(); return { success: false, error: errText }; } catch (e) { return { success: false, error: e.message }; } }
 async function sendNotification(text, env, extra) { extra = extra || {}; const configs = await getNotifyConfigs(env); const enabled = configs.filter(c => c.enabled); if (enabled.length === 0) { await addLog('warn', '没有启用的通知配置', env); return false; } let success = false; for (const config of enabled) { const result = await sendNotificationToConfig(config, text, extra); if (result.success) success = true; } return success; }
 
@@ -204,7 +198,6 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   return renderTemplate(template, baseVars);
 }
 
-// ========== 监控逻辑 ==========
 async function processRoom(roomId, env, options) {
   options = options || {};
   roomId = toRoomId(roomId);
@@ -276,7 +269,6 @@ async function processRoom(roomId, env, options) {
 
 async function monitorAll(env, options) { options = options || {}; const roomIds = await getRoomList(env); if (roomIds.length === 0) { await addLog('warn', '房间列表为空，跳过检查', env); return { error: '房间列表为空' }; } await addLog('info', '开始批量检查 ' + roomIds.length + ' 个房间' + (options.force ? ' (强制刷新)' : ''), env); const results = []; for (const id of roomIds) { const roomId = toRoomId(id); try { const res = await processRoom(roomId, env, { force: options.force }); results.push({ room_id: roomId, ...res }); } catch (e) { await addLog('error', '处理房间 ' + roomId + ' 失败: ' + e.message, env); results.push({ room_id: roomId, error: e.message }); } } await addLog('info', '批量检查完成，共 ' + results.length + ' 个结果', env); return results; }
 
-// ========== 认证与辅助 ==========
 function isAuthenticated(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const authCookie = cookie.split(';').find(c => c.trim().startsWith('auth='));
@@ -288,10 +280,26 @@ function isAuthenticated(request, env) {
     return parts[0] === env.ADMIN_USER && parts[1] === env.ADMIN_PASSWORD;
   } catch { return false; }
 }
-function jsonResponse(data, status = 200, env) { return new Response(JSON.stringify(data), { status: status, headers: { 'Content-Type': 'application/json', ...corsHeaders(env) } }); }
-function corsHeaders(env) { return { 'Access-Control-Allow-Origin': env.FRONTEND_URL || 'https://live.262832.xyz', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Credentials': 'true' }; }
 
-// ========== 路由处理 ==========
+function jsonResponse(data, status = 200, env) {
+  return new Response(JSON.stringify(data), {
+    status: status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(env)
+    }
+  });
+}
+
+function corsHeaders(env) {
+  return {
+    'Access-Control-Allow-Origin': env.FRONTEND_URL || 'https://live.262832.xyz',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true'
+  };
+}
+
 async function handleRequest(request, env) {
   try {
     const url = new URL(request.url);
@@ -336,6 +344,7 @@ async function handleRequest(request, env) {
       for (const id of rooms) states[id] = await getMonitorState(env, id);
       return jsonResponse({ rooms, states }, 200, env);
     }
+
     if (path === '/api/rooms' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
@@ -345,6 +354,7 @@ async function handleRequest(request, env) {
       try { await processRoom(roomId, env, { force: true }); } catch (e) {}
       return jsonResponse({ success: true }, 200, env);
     }
+
     if (path === '/api/rooms' && method === 'DELETE') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
@@ -443,11 +453,17 @@ async function handleRequest(request, env) {
   }
 }
 
-// ========== Worker 入口 ==========
 export default {
-  async fetch(request, env) { return handleRequest(request, env); },
+  async fetch(request, env) {
+    return handleRequest(request, env);
+  },
   async scheduled(event, env) {
     await addLog('info', 'Cron检测启动', env);
-    try { const result = await monitorAll(env); await addLog('info', 'Cron检测完成: ' + JSON.stringify(result), env); } catch (e) { await addLog('error', 'Cron检测异常: ' + e.message, env); }
+    try {
+      const result = await monitorAll(env);
+      await addLog('info', 'Cron检测完成: ' + JSON.stringify(result), env);
+    } catch (e) {
+      await addLog('error', 'Cron检测异常: ' + e.message, env);
+    }
   }
 };
