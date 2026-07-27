@@ -57,6 +57,7 @@ async function addClientError(env, data) {
   return id;
 }
 
+// ---------- 伪装UA ----------
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
@@ -77,96 +78,140 @@ function getRandomUserAgent() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
+// ---------- 增强请求头 ----------
 function buildBrowserHeaders() {
   const ua = getRandomUserAgent();
+  const isChrome = ua.includes('Chrome') && !ua.includes('Edg');
+  const isEdge = ua.includes('Edg');
+  const isFirefox = ua.includes('Firefox');
+  const platform = ua.includes('Windows') ? '"Windows"' : (ua.includes('Mac') ? '"macOS"' : (ua.includes('Linux') ? '"Linux"' : '"Unknown"'));
+  let secChUa = '"Not?A_Brand";v="8", "Chromium";v="150"';
+  if (isChrome) secChUa = '"Chromium";v="120", "Google Chrome";v="120"';
+  else if (isEdge) secChUa = '"Microsoft Edge";v="119", "Chromium";v="119"';
+  else if (isFirefox) secChUa = '"Firefox";v="121"';
   return {
     'User-Agent': ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     'Accept-Encoding': 'gzip, deflate, br',
     'Referer': 'https://live.bilibili.com/',
+    'Origin': 'https://live.bilibili.com',
     'Sec-Fetch-Site': 'same-origin',
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Dest': 'document',
     'Upgrade-Insecure-Requests': '1',
     'Cache-Control': 'max-age=0',
-    'Connection': 'keep-alive'
+    'Connection': 'keep-alive',
+    'sec-ch-ua': secChUa,
+    'sec-ch-ua-platform': platform,
+    'sec-ch-ua-mobile': '?0',
+    'X-Requested-With': 'XMLHttpRequest'
   };
 }
 
+// ---------- 直播状态获取 ----------
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   try {
     const data = await fetchFromUAPI(roomId, env);
     if (data) return data;
   } catch (e) {
-    await addLog('warn', `[${roomId}] UAPI请求失败，尝试备用接口: ${e.message}`, env);
+    await addLog('warn', `[${roomId}] UAPI失败: ${e.message}，降级官方`, env);
   }
-  try {
-    const data = await fetchFromBilibiliOfficial(roomId, env);
-    if (data) return data;
-  } catch (e) {
-    await addLog('error', `[${roomId}] 官方接口也失败: ${e.message}`, env);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = await fetchFromBilibiliOfficial(roomId, env);
+      if (data) return data;
+    } catch (e) {
+      await addLog('warn', `[${roomId}] 官方第${attempt+1}次失败: ${e.message}`, env);
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+    }
   }
+  await addLog('error', `[${roomId}] 所有接口失败，使用旧状态`, env);
   return null;
 }
 
+// ===== 修改点：统一返回体结构 =====
 async function fetchFromUAPI(roomId, env) {
   const url = CONFIG.MAIN_API + '?room_id=' + encodeURIComponent(roomId);
   const headers = buildBrowserHeaders();
   if (env.UAPI_KEY) headers['Authorization'] = 'Bearer ' + env.UAPI_KEY;
   const resp = await fetch(url, { headers });
-  if (!resp.ok) {
-    if (resp.status === 429) throw new Error('UAPI限流(429)');
-    throw new Error('UAPI请求失败 (' + resp.status + ')');
-  }
+  if (!resp.ok) throw new Error('UAPI失败 (' + resp.status + ')');
   const data = await resp.json();
-  if (!data.room_id) throw new Error('UAPI返回数据缺少room_id');
-  return data;
+  // 映射为统一结构，与官方接口保持一致
+  return {
+    room_id: data.room_id || roomId,
+    live_status: data.live_status ?? data.livestatus ?? data.liveStatus ?? 0,
+    title: data.title || '',
+    online: data.online || data.viewers || 0,
+    area_name: data.area_name || data.area || '',
+    parent_area_name: data.parent_area_name || data.parent_area || '',
+    user_cover: data.user_cover || data.cover || '',
+    live_time: data.live_time ? String(data.live_time) : '',
+    uid: data.uid || data.mid || ''
+  };
 }
 
+// 官方接口同样映射（已一致）
 async function fetchFromBilibiliOfficial(roomId, env) {
-  const url = 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id=' + encodeURIComponent(roomId);
+  const url = 'https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?' +
+    'room_id=' + encodeURIComponent(roomId) +
+    '&protocol=0,1&format=0,1,2&codec=0,1,2';
   const headers = buildBrowserHeaders();
   const resp = await fetch(url, { headers });
-  if (!resp.ok) throw new Error('官方接口请求失败 (' + resp.status + ')');
+  if (!resp.ok) throw new Error('官方失败 (' + resp.status + ')');
   const json = await resp.json();
-  if (json.code !== 0 || !json.data) throw new Error('官方接口返回错误: ' + (json.msg || json.message || '未知错误'));
+  if (json.code !== 0 || !json.data) throw new Error('官方返回错误: ' + (json.msg || json.message));
   const d = json.data;
   return {
-    room_id: roomId,
-    live_status: d.live_status,
+    room_id: d.room_id || roomId,
+    live_status: d.live_status ?? 0,
     title: d.title || '',
     online: d.online || 0,
     area_name: d.area_name || '',
     parent_area_name: d.parent_area_name || '',
     user_cover: d.user_cover || '',
-    live_time: d.live_time || '',
+    live_time: d.live_time ? String(d.live_time) : '',
     uid: d.uid || ''
   };
 }
 
-async function fetchUserInfo(uid) {
+// ---------- 用户信息（失败时返回缓存） ----------
+async function fetchUserInfo(uid, env) {
+  if (!uid) return null;
   const cacheKey = buildCacheKey('userinfo', uid);
   const cached = await getCache(cacheKey);
-  if (cached) return cached;
-  const url = CONFIG.USER_API + '?uid=' + encodeURIComponent(uid);
-  const headers = buildBrowserHeaders();
-  const resp = await fetch(url, { headers });
-  if (!resp.ok) throw new Error('用户信息API请求失败 (' + resp.status + ')');
-  const data = await resp.json();
-  if (!data.mid) throw new Error('用户信息API返回缺少mid');
-  await setCache(cacheKey, data, CONFIG.USER_INFO_TTL);
-  return data;
+  try {
+    const url = CONFIG.USER_API + '?uid=' + encodeURIComponent(uid);
+    const headers = buildBrowserHeaders();
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) throw new Error('用户信息API失败 (' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.mid) throw new Error('用户信息返回缺少mid');
+    await setCache(cacheKey, data, CONFIG.USER_INFO_TTL);
+    return data;
+  } catch (e) {
+    if (cached) {
+      await addLog('warn', `用户信息API失败，使用缓存 uid=${uid}`, env);
+      return cached;
+    }
+    throw e;
+  }
 }
 
+// ---------- 通知 ----------
 async function sendNotificationToConfig(config, text, extra) { extra = extra || {}; try { let payload = {}; if (config.protocol === 'discord') { payload = { content: text }; } else if (config.protocol === 'custom_webhook') { payload = extra; } else { const receiverKey = config.receiver_key || 'chat_id'; const messageKey = config.message_key || 'text'; payload[receiverKey] = config.chat_id; payload[messageKey] = text; } if (config.extra_params) Object.assign(payload, config.extra_params); const resp = await fetch(config.api_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (resp.ok) return { success: true }; const errText = await resp.text(); return { success: false, error: errText }; } catch (e) { return { success: false, error: e.message }; } }
 async function sendNotification(text, env, extra) { extra = extra || {}; const configs = await getNotifyConfigs(env); const enabled = configs.filter(c => c.enabled); if (enabled.length === 0) { await addLog('warn', '没有启用的通知配置', env); return false; } let success = false; for (const config of enabled) { const result = await sendNotificationToConfig(config, text, extra); if (result.success) success = true; } return success; }
 
 async function buildNotification(roomId, current, env, eventType, extra) {
   extra = extra || {};
   let userInfo = null;
-  try { userInfo = await fetchUserInfo(current.uid); } catch (e) {}
+  try {
+    userInfo = await fetchUserInfo(current.uid, env);
+  } catch (e) {
+    await addLog('warn', `获取用户信息失败 uid=${current.uid}: ${e.message}`, env);
+  }
   const anchorName = (userInfo && userInfo.name) ? userInfo.name : '房间 ' + roomId;
   const now = new Date();
   const shanghaiNow = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
@@ -174,8 +219,8 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   if (eventType === 'live_end') {
     let duration = '';
     if (current.live_time) {
-      const start = new Date(current.live_time);
-      const diffMs = now - start;
+      const startTime = new Date(Number(current.live_time) * 1000);
+      const diffMs = now - startTime;
       if (diffMs > 0) {
         const diffMin = Math.floor(diffMs / 60000);
         const hours = Math.floor(diffMin / 60);
@@ -195,16 +240,28 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   const eventNameMap = { 'live_start': '开播', 'title_change': '标题修改', 'cover_change': '封面变化', 'area_change': '分区切换', 'popularity_milestone': '人气里程碑' };
   const eventDisplay = eventNameMap[eventType] || eventType;
   const baseVars = {
-    '事件': eventDisplay, '主播': anchorName, '标题': current.title || '未知', 'UID': current.uid || '',
-    '房间号': current.room_id || roomId, '直播时间': current.live_time || '',
+    '事件': eventDisplay,
+    '主播': anchorName,
+    '标题': current.title || '未知',
+    'UID': current.uid || '',
+    '房间号': current.room_id || roomId,
+    '直播时间': current.live_time ? new Date(Number(current.live_time) * 1000).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '',
     '直播链接': 'https://live.bilibili.com/' + (current.room_id || roomId),
-    '分区': current.area_name || '未知', '父分区': current.parent_area_name || '未知',
-    '人气': current.online || 0, '封面': current.user_cover || '',
-    '签名': (userInfo && userInfo.sign) || '', '粉丝': (userInfo && userInfo.follower) || 0,
-    '关注': (userInfo && userInfo.following) || 0, '等级': levelDisplay,
-    '性别': (userInfo && userInfo.sex) || '', 'VIP类型': vipType, 'VIP状态': vipStatus,
-    '投稿数': (userInfo && userInfo.archive_count) || 0, '文章数': (userInfo && userInfo.article_count) || 0,
-    '头像': (userInfo && userInfo.face) || '', '时间': shanghaiNow
+    '分区': current.area_name || '未知',
+    '父分区': current.parent_area_name || '未知',
+    '人气': current.online || 0,
+    '封面': current.user_cover || '',
+    '签名': (userInfo && userInfo.sign) || '',
+    '粉丝': (userInfo && userInfo.follower) || 0,
+    '关注': (userInfo && userInfo.following) || 0,
+    '等级': levelDisplay,
+    '性别': (userInfo && userInfo.sex) || '',
+    'VIP类型': vipType,
+    'VIP状态': vipStatus,
+    '投稿数': (userInfo && userInfo.archive_count) || 0,
+    '文章数': (userInfo && userInfo.article_count) || 0,
+    '头像': (userInfo && userInfo.face) || '',
+    '时间': shanghaiNow
   };
   const configs = await getNotifyConfigs(env);
   let template = null;
@@ -213,6 +270,7 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   return renderTemplate(template, baseVars);
 }
 
+// ---------- 监控逻辑 ----------
 async function processRoom(roomId, env, options) {
   options = options || {};
   roomId = toRoomId(roomId);
@@ -296,7 +354,6 @@ function isAuthenticated(request, env) {
   } catch { return false; }
 }
 
-// 固定 CORS 头
 function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': 'https://live.ctn32.us.kg',
@@ -325,18 +382,15 @@ async function handleRequest(request, env) {
 
     if (method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env) });
 
-    // 公开健康检查
     if (path === '/api/health' && method === 'GET') {
       return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, env);
     }
 
     if (path === '/api/login' && method === 'POST') {
-      // 验证是否携带 ctn32（防止直接调用）
       const cookie = request.headers.get('Cookie') || '';
       if (!cookie.includes('ctn32=ctn32')) {
         return jsonResponse({ error: '非法访问' }, 403, env);
       }
-
       let body; try { body = await request.json(); } catch { body = {}; }
       const { username, password } = body;
       if (username === env.ADMIN_USER && password === env.ADMIN_PASSWORD) {
@@ -501,7 +555,6 @@ async function handleRequest(request, env) {
       return jsonResponse(error, 200, env);
     }
 
-    // 非 API 请求（但后端 Worker 不托管 HTML，直接 404）
     return jsonResponse({ error: 'Not Found' }, 404, env);
   } catch (e) {
     console.error('Unhandled error:', e);
