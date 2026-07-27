@@ -659,7 +659,7 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口（已修复） ==========
+// ========== Worker 主入口 ==========
 export default {
   async fetch(request, env) {
     const backendUrl = env.BACKEND_URL;
@@ -677,17 +677,14 @@ export default {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 1. 设置正确的 Host 和 Origin（解决自定义域名问题）
+      // 设置正确的 Host 和 Origin
       headers.set('Host', 'live-api.ctn32.us.kg');
       headers.set('Origin', 'https://live.ctn32.us.kg');
       headers.set('Referer', 'https://live.ctn32.us.kg/');
-
-      // 2. 保留原始 Host 信息
-      const originalHost = request.headers.get('Host') || '';
-      headers.set('X-Forwarded-Host', originalHost);
+      headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
       headers.set('X-Forwarded-Proto', 'https');
 
-      // 3. 注入 ctn32 Cookie
+      // 注入 ctn32 Cookie
       const oldCookie = request.headers.get('cookie') || '';
       let newCookie = oldCookie;
       if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
@@ -695,18 +692,11 @@ export default {
       }
       headers.set('Cookie', newCookie);
 
-      // 记录完整请求调试信息
       console.log('[Proxy] Request:', {
         method: request.method,
         target,
-        originalHost,
         origin: headers.get('Origin'),
-        referer: headers.get('Referer'),
-        cookie: newCookie,
-        userAgent: headers.get('User-Agent'),
-        contentType: headers.get('Content-Type'),
-        accept: headers.get('Accept'),
-        allHeaders: Object.fromEntries(headers.entries())
+        cookie: newCookie
       });
 
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
@@ -715,55 +705,41 @@ export default {
 
       let response;
       try {
+        // 禁止自动跟随重定向
         response = await fetch(
           new Request(target, {
             method: request.method,
             headers: headers,
             body: requestBody,
-            redirect: 'follow' // 改为 follow
+            redirect: 'manual'
           })
         );
       } catch (e) {
-        console.error('[Proxy] Fetch error:', {
-          message: e.message,
-          target,
-          stack: e.stack
-        });
+        console.error('[Proxy] Fetch error:', e);
         return new Response(
           JSON.stringify({
             error: 'Backend proxy failed',
             message: e.message,
-            target: target,
-            stack: e.stack,
-            debug: {
-              requestHeaders: {
-                origin: headers.get('Origin'),
-                referer: headers.get('Referer'),
-                cookie: headers.get('Cookie'),
-                host: headers.get('Host'),
-                'user-agent': headers.get('User-Agent')
-              },
-              backendUrl,
-              path,
-              method: request.method
-            }
+            target
           }),
-          {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-          }
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
         );
       }
 
-      // 记录响应调试信息
-      console.log('[Proxy] Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        setCookie: response.headers.get('set-cookie'),
-        hasSetCookie: !!response.headers.get('set-cookie'),
-        contentType: response.headers.get('content-type'),
-        contentLength: response.headers.get('content-length')
-      });
+      // 检测重定向
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location') || '未知';
+        console.error('[Proxy] Redirect detected:', { status: response.status, location, target });
+        return new Response(
+          JSON.stringify({
+            error: 'Backend returned redirect',
+            status: response.status,
+            location: location,
+            target: target
+          }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
 
       // 构建响应头
       const outHeaders = new Headers();
@@ -786,7 +762,6 @@ export default {
         }
       }
 
-      // 禁用缓存
       outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
       outHeaders.set('Pragma', 'no-cache');
       outHeaders.set('Expires', '0');
@@ -797,7 +772,7 @@ export default {
       });
     }
 
-    // 路由处理
+    // 路由
     if (path === '/login') {
       return new Response(LOGIN_PAGE, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
