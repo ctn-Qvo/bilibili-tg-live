@@ -66,6 +66,21 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 </div>
 <div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
 <div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 id="modalTitle" class="modal-title">提示</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="modalMessage"></div><div class="modal-footer"><button type="button" id="modalConfirmBtn" class="btn btn-primary">确定</button><button type="button" id="modalCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">取消</button></div></div></div></div>
+<!-- 错误详情模态框 -->
+<div class="modal fade" id="errorDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">错误详情</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="errorDetailBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 document.cookie = 'ctn32=ctn32; path=/; domain=.262832.xyz; Secure; SameSite=Lax';
 
@@ -85,7 +100,7 @@ function showMessage(msg, type) {
     box.style.transition = 'opacity .5s';
     box.style.opacity = '0';
     setTimeout(() => box.remove(), 500);
-  }, 5000);
+  }, 8000);
 }
 
 function escapeHtml(str) {
@@ -97,36 +112,96 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 }
 
+// 错误上报函数
+async function reportError(error, context) {
+  try {
+    const payload = {
+      message: error.message || String(error),
+      stack: error.stack || '',
+      url: window.location.href,
+      user_agent: navigator.userAgent,
+      context: context || 'unknown',
+      extra: {}
+    };
+    const res = await axios.post('/api/client-errors', payload);
+    return res.data.id;
+  } catch (e) {
+    console.error('上报错误失败:', e);
+    return null;
+  }
+}
+
+// 显示带错误详情的弹窗
+async function showErrorWithDetail(msg, error, context) {
+  const errorId = await reportError(error, context);
+  let detailLink = '';
+  if (errorId) {
+    detailLink = ' <button class="btn btn-link btn-sm p-0" onclick="viewErrorDetail(\'' + errorId + '\')">查看详情</button>';
+  }
+  const fullMsg = msg + detailLink;
+  showMessage(fullMsg, 'error');
+}
+
+// 查看错误详情
+window.viewErrorDetail = async function(id) {
+  try {
+    const res = await axios.get('/api/client-errors/' + id);
+    const data = res.data;
+    const body = document.getElementById('errorDetailBody');
+    body.innerHTML = `
+      <p><strong>错误ID:</strong> ${escapeHtml(data.id)}</p>
+      <p><strong>时间:</strong> ${escapeHtml(formatDate(data.timestamp))}</p>
+      <p><strong>消息:</strong> ${escapeHtml(data.message)}</p>
+      <p><strong>URL:</strong> ${escapeHtml(data.url)}</p>
+      <p><strong>用户代理:</strong> ${escapeHtml(data.user_agent)}</p>
+      <p><strong>上下文:</strong> ${escapeHtml(data.context)}</p>
+      <p><strong>堆栈:</strong><br><pre style="background:#f8f9fa;padding:10px;border-radius:4px;white-space:pre-wrap;word-break:break-all;">${escapeHtml(data.stack || '无堆栈信息')}</pre></p>
+      ${data.extra ? '<p><strong>额外信息:</strong> <pre>' + JSON.stringify(data.extra, null, 2) + '</pre></p>' : ''}
+    `;
+    const modal = new bootstrap.Modal(document.getElementById('errorDetailModal'));
+    modal.show();
+  } catch (e) {
+    showMessage('加载错误详情失败: ' + e.message, 'error');
+  }
+};
+
+// ---- 认证相关 ----
 async function checkAuth() {
   try {
     const res = await axios.get('/api/me');
     const contentType = res.headers['content-type'] || '';
     if (!contentType.includes('application/json')) {
-      return false;
+      throw new Error('服务器返回非 JSON 响应，请检查后端服务。');
     }
     return res.status === 200 && res.data && res.data.username;
-  } catch {
+  } catch (e) {
+    await showErrorWithDetail('认证检查失败，请检查网络或后端服务。', e, 'checkAuth');
     return false;
   }
 }
 
 async function login(username, password) {
-  const res = await fetch('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ username, password })
-  });
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    throw new Error('服务器返回非 JSON 响应，请检查后端服务。错误片段: ' + text.substring(0, 200));
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username, password })
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      throw new Error('服务器返回非 JSON 响应，错误片段: ' + text.substring(0, 200));
+    }
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || '登录失败');
+    }
+    return true;
+  } catch (e) {
+    await showErrorWithDetail('登录失败，请检查用户名密码或后端服务。', e, 'login');
+    throw e;
   }
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(data.error || '登录失败');
-  }
-  return true;
 }
 
 function logout() {
@@ -145,6 +220,7 @@ function showMainPanel() {
   document.getElementById('mainPanel').style.display = 'block';
 }
 
+// ---- 房间渲染 ----
 async function renderRooms() {
   const container = document.getElementById('roomContainer');
   try {
@@ -171,8 +247,8 @@ async function renderRooms() {
   }
 }
 
+// ---- 日志 ----
 let allLogs = [];
-
 async function fetchLogs() {
   try {
     const res = await axios.get('/api/logs');
@@ -202,6 +278,7 @@ function renderLogs() {
   container.innerHTML = html;
 }
 
+// ---- 通知配置 ----
 async function renderConfigs() {
   const tbody = document.getElementById('configTableBody');
   try {
@@ -224,7 +301,9 @@ async function renderConfigs() {
   }
 }
 
+// ---- 主面板事件绑定 ----
 function initMainEvents() {
+  // 主题切换
   document.getElementById('themeToggle').addEventListener('click', function() {
     const html = document.documentElement;
     const theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
@@ -238,6 +317,7 @@ function initMainEvents() {
 
   document.getElementById('logoutBtn').addEventListener('click', logout);
 
+  // 日志
   document.getElementById('refreshLogsBtn').addEventListener('click', fetchLogs);
   document.getElementById('logSearch').addEventListener('input', renderLogs);
   document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
@@ -253,6 +333,7 @@ function initMainEvents() {
   });
   logTimer = setInterval(fetchLogs, 5000);
 
+  // 添加房间
   const addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
   document.getElementById('addRoomBtn').addEventListener('click', () => {
     document.getElementById('roomInput').value = '';
@@ -275,6 +356,7 @@ function initMainEvents() {
     this.textContent = '完成';
   });
 
+  // 删除房间（委托）
   document.addEventListener('click', async function(e) {
     const btn = e.target.closest('.delete-room-btn');
     if (btn) {
@@ -294,6 +376,7 @@ function initMainEvents() {
     }
   });
 
+  // 检查所有
   document.getElementById('checkAllBtn').addEventListener('click', async function() {
     this.disabled = true;
     this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
@@ -308,6 +391,7 @@ function initMainEvents() {
     this.innerHTML = '<i class="bi bi-arrow-repeat"></i> 检查';
   });
 
+  // 刷新房间
   document.getElementById('refreshRoomsBtn').addEventListener('click', async function() {
     this.disabled = true;
     this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
@@ -316,6 +400,7 @@ function initMainEvents() {
     this.innerHTML = '<i class="bi bi-cloud-refresh"></i> 刷新';
   });
 
+  // 模拟直播
   document.getElementById('sendLiveBtn').addEventListener('click', async function() {
     this.disabled = true;
     this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
@@ -329,6 +414,7 @@ function initMainEvents() {
     this.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
   });
 
+  // 单房间检查
   document.getElementById('singleCheckBtn').addEventListener('click', async function() {
     const roomId = document.getElementById('singleCheckInput').value.trim();
     if (!roomId) { showMessage('请输入房间号', 'error'); return; }
@@ -345,6 +431,7 @@ function initMainEvents() {
     this.innerHTML = '查';
   });
 
+  // 清空日志
   document.getElementById('clearLogsBtn').addEventListener('click', async function() {
     if (!confirm('确定清除所有日志吗？')) return;
     try {
@@ -356,6 +443,7 @@ function initMainEvents() {
     }
   });
 
+  // 导出日志
   document.getElementById('exportLogsBtn').addEventListener('click', function() {
     const blob = new Blob([JSON.stringify(allLogs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -364,6 +452,7 @@ function initMainEvents() {
     URL.revokeObjectURL(url);
   });
 
+  // 通知配置表单
   function updateNotifyForm() {
     const val = document.getElementById('protocolSelect').value;
     const tgTokenGroup = document.getElementById('tgTokenGroup');
@@ -433,6 +522,7 @@ function initMainEvents() {
     }
   });
 
+  // 配置操作（测试、切换、删除）
   document.addEventListener('click', async function(e) {
     const btn = e.target.closest('.test-btn');
     if (btn) {
@@ -480,6 +570,7 @@ function initMainEvents() {
   });
 }
 
+// ---- 页面初始化 ----
 window.onload = async function() {
   showLoginPanel();
   const authed = await checkAuth();
