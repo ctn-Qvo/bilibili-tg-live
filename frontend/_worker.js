@@ -659,10 +659,9 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口（已修复） ==========
+// ========== Worker 主入口（含完整调试日志） ==========
 export default {
   async fetch(request, env) {
-    // 从环境变量读取后端地址
     const backendUrl = env.BACKEND_URL;
     if (!backendUrl) {
       return new Response(
@@ -674,17 +673,17 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 代理所有 /api/* 请求到后端
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 强制设置正确的 Origin 和 Referer（修复自定义域名跨域问题）
+      // 强制设置 Origin 和 Referer（解决自定义域名跨域问题）
       headers.set('Origin', 'https://live.ctn32.us.kg');
       headers.set('Referer', 'https://live.ctn32.us.kg/');
 
-      // 保留原始 Host 信息（用于后端日志）
-      headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
+      // 保留原始 Host 信息
+      const originalHost = request.headers.get('Host') || '';
+      headers.set('X-Forwarded-Host', originalHost);
       headers.set('X-Forwarded-Proto', 'https');
 
       // 注入 ctn32 Cookie（绕过防火墙）
@@ -695,7 +694,20 @@ export default {
       }
       headers.set('Cookie', newCookie);
 
-      // 准备请求体
+      // 记录完整请求调试信息
+      console.log('[Proxy] Request:', {
+        method: request.method,
+        target,
+        originalHost,
+        origin: headers.get('Origin'),
+        referer: headers.get('Referer'),
+        cookie: newCookie,
+        userAgent: headers.get('User-Agent'),
+        contentType: headers.get('Content-Type'),
+        accept: headers.get('Accept'),
+        allHeaders: Object.fromEntries(headers.entries())
+      });
+
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
         ? undefined
         : await request.arrayBuffer();
@@ -711,13 +723,36 @@ export default {
           })
         );
       } catch (e) {
-        // 网络错误捕获，返回详细 JSON
+        console.error('[Proxy] Fetch error:', {
+          message: e.message,
+          target,
+          stack: e.stack,
+          requestHeaders: {
+            origin: headers.get('Origin'),
+            referer: headers.get('Referer'),
+            cookie: headers.get('Cookie'),
+            host: headers.get('Host'),
+            'user-agent': headers.get('User-Agent')
+          }
+        });
         return new Response(
           JSON.stringify({
             error: 'Backend proxy failed',
             message: e.message,
             target: target,
-            stack: e.stack
+            stack: e.stack,
+            debug: {
+              requestHeaders: {
+                origin: headers.get('Origin'),
+                referer: headers.get('Referer'),
+                cookie: headers.get('Cookie'),
+                host: headers.get('Host'),
+                'user-agent': headers.get('User-Agent')
+              },
+              backendUrl,
+              path,
+              method: request.method
+            }
           }),
           {
             status: 502,
@@ -725,6 +760,16 @@ export default {
           }
         );
       }
+
+      // 记录响应调试信息
+      console.log('[Proxy] Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        setCookie: response.headers.get('set-cookie'),
+        hasSetCookie: !!response.headers.get('set-cookie'),
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
 
       // 构建响应头
       const outHeaders = new Headers();
@@ -734,7 +779,7 @@ export default {
         }
       }
 
-      // 透传 Set-Cookie（使用 append，确保多个 Cookie 不被覆盖）
+      // 透传 Set-Cookie
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -758,7 +803,7 @@ export default {
       });
     }
 
-    // 路由：返回对应 HTML 页面
+    // 路由处理
     if (path === '/login') {
       return new Response(LOGIN_PAGE, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
