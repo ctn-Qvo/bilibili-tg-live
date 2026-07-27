@@ -1,10 +1,7 @@
-const HTML = `
-<!DOCTYPE html>
-<html lang="zh">
-<head>
+// ========== 公共头部与样式 ==========
+const COMMON_HEAD = `
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>直播监控管理</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -33,7 +30,7 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 .room-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(43,108,181,0.12)}
 .room-title{font-weight:600;font-size:1.1rem;margin-bottom:0.25rem}
 .room-meta{font-size:0.9rem;color:#6c757d}
-.log-box{max-height:300px;overflow-y:auto;font-size:0.85rem;background:var(--card-bg);border-radius:0 0 16px 16px;padding:0.5rem 1rem}
+.log-box{max-height:400px;overflow-y:auto;font-size:0.85rem;background:var(--card-bg);border-radius:0 0 16px 16px;padding:0.5rem 1rem}
 .log-entry{padding:0.25rem 0;border-bottom:1px solid rgba(0,0,0,0.05)}
 .log-time{color:#6c757d;margin-right:0.5rem}
 .log-level-info{color:#0d6efd}
@@ -45,64 +42,17 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 .tab-btn:not(.active):hover{background:rgba(43,108,181,0.08)}
 #notifies .form-control,#notifies .form-select{background:var(--card-bg);color:var(--text);border-color:#ced4da}
 [data-bs-theme="dark"] .form-control,[data-bs-theme="dark"] .form-select{background:#2d3748;color:#e2e8f0;border-color:#4a5568}
-#loginPanel{display:flex;align-items:center;justify-content:center;min-height:100vh}
 </style>
-</head>
-<body>
-<div class="container-fluid p-3" id="app">
-<div id="loginPanel" style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
-  <div class="col-md-4"><div class="card shadow"><div class="card-body"><h1 class="card-title text-center">管理登录</h1><div id="loginError" class="alert alert-danger" style="display:none;"></div><form id="loginForm"><div class="mb-3"><label class="form-label">用户名</label><input type="text" id="loginUsername" class="form-control" required></div><div class="mb-3"><label class="form-label">密码</label><input type="password" id="loginPassword" class="form-control" required></div><button type="submit" class="btn btn-primary w-100">登录</button></form></div></div></div>
-</div>
-<div id="mainPanel" style="display:none;">
-  <div class="row mb-3 align-items-center"><div class="col-md-6"><h1 class="d-flex align-items-center gap-2" style="color:var(--primary);"><i class="bi bi-broadcast"></i> 直播监控</h1></div><div class="col-md-6 text-end"><button id="themeToggle" class="btn btn-outline-secondary me-2">深色</button><button id="logoutBtn" class="btn btn-outline-danger">退出</button></div></div>
-  <div id="messageArea"></div>
-  <ul class="nav nav-tabs mb-3" id="myTab" role="tablist"><li class="nav-item"><button class="nav-link tab-btn active" id="rooms-tab" data-bs-toggle="tab" data-bs-target="#rooms" type="button">房间</button></li><li class="nav-item"><button class="nav-link tab-btn" id="notifies-tab" data-bs-toggle="tab" data-bs-target="#notifies" type="button">通知配置</button></li></ul>
-  <div class="tab-content">
-    <div class="tab-pane active" id="rooms">
-      <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-house-door"></i> 监控房间<div class="ms-auto d-flex flex-wrap gap-2"><button id="addRoomBtn" class="btn btn-sm btn-light"><i class="bi bi-plus-circle"></i> 添加</button><button id="checkAllBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-repeat"></i> 检查</button><button id="refreshRoomsBtn" class="btn btn-sm btn-light"><i class="bi bi-cloud-refresh"></i> 刷新</button><button id="sendLiveBtn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> 模拟</button><div class="input-group input-group-sm" style="width:200px;"><input id="singleCheckInput" class="form-control" placeholder="房间号"><button id="singleCheckBtn" class="btn btn-light">查</button></div></div></div><div class="card-body"><div id="roomContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3"></div></div></div>
-      <div class="card mt-4"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-journal-text"></i> 运行日志<div class="ms-auto d-flex gap-2 flex-wrap"><button id="clearLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-trash"></i> 清除</button><button id="refreshLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-clockwise"></i> 刷新</button><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="autoRefresh" checked><label class="form-check-label" for="autoRefresh">自动</label></div><input id="logSearch" class="form-control form-control-sm" placeholder="搜索..." style="width:120px;"><select id="logLevelFilter" class="form-select form-select-sm" style="width:auto;"><option value="">全部</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option></select><button id="exportLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-download"></i></button></div></div><div id="logContainer" class="log-box"></div></div>
-    </div>
-    <div class="tab-pane" id="notifies">
-      <div class="card mb-3"><div class="card-header"><i class="bi bi-plus-circle"></i> 添加通知配置</div><div class="card-body"><form id="addNotifyForm" class="row g-3"><div class="col-md-4"><label class="form-label">名称</label><input type="text" name="name" class="form-control" placeholder="" required></div><div class="col-md-4"><label class="form-label">协议</label><select name="protocol" id="protocolSelect" class="form-select"><option value="telegram">Telegram</option><option value="onebot_private">OneBot 私聊</option><option value="onebot_group">OneBot 群聊</option><option value="discord">Discord Webhook</option><option value="custom_webhook">自定义 Webhook</option></select></div><input type="hidden" id="apiUrl" name="api_url"><div class="col-md-6" id="tgTokenGroup"><label class="form-label">Bot Token</label><input type="text" id="tgToken" name="tg_token" class="form-control" placeholder=""><small class="text-muted">自动构建 API 地址</small></div><div class="col-md-6"><label class="form-label" id="receiverLabel">接收者 ID</label><input type="text" name="chat_id" id="chatId" class="form-control" placeholder=""></div><div class="col-12"><label class="form-label">通知模板 (可选)</label><textarea name="template" id="templateArea" class="form-control" rows="6">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea></div><div class="col-12"><button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> 添加配置</button></div></form></div></div>
-      <div class="card"><div class="card-header"><i class="bi bi-list-ul"></i> 现有配置</div><div class="card-body"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>名称</th><th>协议</th><th>状态</th><th>操作</th></tr></thead><tbody id="configTableBody"></tbody></table></div></div></div>
-    </div>
-  </div>
-</div>
-</div>
-<div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
-<div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 id="modalTitle" class="modal-title">提示</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="modalMessage"></div><div class="modal-footer"><button type="button" id="modalConfirmBtn" class="btn btn-primary">确定</button><button type="button" id="modalCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">取消</button></div></div></div></div>
-<div class="modal fade" id="errorDetailModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">错误详情</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="errorDetailBody"></div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-      </div>
-    </div>
-  </div>
-</div>
-<script>
-// --- 兼容 closest ---
+`;
+
+// ========== 公共 JavaScript（所有页面共享） ==========
+const COMMON_JS = `
 function closest(el, selector) {
   while (el && el !== document) {
-    if (el.matches && el.matches(selector)) {
-      return el;
-    }
+    if (el.matches && el.matches(selector)) return el;
     el = el.parentNode;
   }
   return null;
-}
-
-// --- Cookie 设置（由 Worker 注入，前端保留空函数）---
-function ensureCTNCookie() {}
-
-if (typeof axios === 'undefined') {
-  alert('Axios 加载失败，请刷新页面或检查网络。');
-  throw new Error('axios missing');
 }
 
 function showMessage(msg, type) {
@@ -121,16 +71,18 @@ function showMessage(msg, type) {
   }, 8000);
 }
 
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDate(iso) {
+  if (!iso) return '从未更新';
+  return dayjs(iso).format('YYYY-MM-DD HH:mm:ss');
+}
+
 axios.defaults.baseURL = '';
 axios.defaults.withCredentials = true;
 axios.defaults.timeout = 10000;
-
-axios.interceptors.request.use(function(config) {
-  ensureCTNCookie();
-  return config;
-}, function(error) {
-  return Promise.reject(error);
-});
 
 axios.interceptors.response.use(
   function(response) { return response; },
@@ -147,15 +99,6 @@ axios.interceptors.response.use(
 );
 
 var reportingError = false;
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function formatDate(iso) {
-  if (!iso) return '从未更新';
-  return dayjs(iso).format('YYYY-MM-DD HH:mm:ss');
-}
 
 async function reportError(error, context) {
   if (reportingError) return null;
@@ -177,16 +120,6 @@ async function reportError(error, context) {
   } finally {
     reportingError = false;
   }
-}
-
-async function showErrorWithDetail(msg, error, context) {
-  var errorId = await reportError(error, context);
-  var detailLink = '';
-  if (errorId) {
-    detailLink = ' <button class="btn btn-link btn-sm p-0" onclick="viewErrorDetail(\'' + errorId + '\')">查看详情</button>';
-  }
-  var fullMsg = msg + detailLink;
-  showMessage(fullMsg, 'error');
 }
 
 window.viewErrorDetail = async function(id) {
@@ -219,15 +152,13 @@ window.viewErrorDetail = async function(id) {
 async function checkAuth() {
   try {
     var res = await axios.get('/api/me?_=' + Date.now());
-    console.log('AUTH:', res.status, res.data);
     return res.data && res.data.username;
   } catch(e) {
-    console.log('AUTH ERROR', e.response);
     return false;
   }
 }
 
-async function login(username, password) {
+async function loginReq(username, password) {
   var res = await axios.post(
     '/api/login?_=' + Date.now(),
     { username: username, password: password },
@@ -248,20 +179,110 @@ async function login(username, password) {
 function logout() {
   axios.post('/api/logout')
     .finally(function() {
-      location.replace('/');
+      window.location.href = '/login';
     });
 }
+`;
 
-function showLoginPanel() {
-  document.getElementById('loginPanel').style.display = 'flex';
-  document.getElementById('mainPanel').style.display = 'none';
+// ========== 登录页面 ==========
+const LOGIN_PAGE = `<!DOCTYPE html>
+<html lang="zh">
+<head>${COMMON_HEAD}
+<title>直播监控 - 登录</title>
+</head>
+<body>
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div class="col-md-4"><div class="card shadow"><div class="card-body"><h1 class="card-title text-center">管理登录</h1><div id="loginError" class="alert alert-danger" style="display:none;"></div><form id="loginForm"><div class="mb-3"><label class="form-label">用户名</label><input type="text" id="loginUsername" class="form-control" required></div><div class="mb-3"><label class="form-label">密码</label><input type="password" id="loginPassword" class="form-control" required></div><button type="submit" class="btn btn-primary w-100">登录</button></form></div></div></div>
+</div>
+<script>
+${COMMON_JS}
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var btn = this.querySelector('button');
+  var errorEl = document.getElementById('loginError');
+  errorEl.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '登录中...';
+  try {
+    var username = document.getElementById('loginUsername').value.trim();
+    var password = document.getElementById('loginPassword').value;
+    if (!username || !password) throw new Error('请输入用户名和密码');
+    await loginReq(username, password);
+    window.location.href = '/dashboard/rooms';
+  } catch(err) {
+    errorEl.innerText = err.message || '登录失败';
+    errorEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '登录';
+  }
+});
+(async function() {
+  if (await checkAuth()) {
+    window.location.href = '/dashboard/rooms';
+  }
+})();
+</script>
+</body>
+</html>`;
+
+// ========== 仪表盘通用模板 ==========
+function dashboardTemplate(bodyContent, activeTab, pageScript) {
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>${COMMON_HEAD}
+<title>直播监控 - 仪表盘</title>
+</head>
+<body>
+<div class="container-fluid p-3">
+  <div class="row mb-3 align-items-center">
+    <div class="col-md-6"><h1 class="d-flex align-items-center gap-2" style="color:var(--primary);"><i class="bi bi-broadcast"></i> 直播监控</h1></div>
+    <div class="col-md-6 text-end"><button id="themeToggle" class="btn btn-outline-secondary me-2">深色</button><button id="logoutBtn" class="btn btn-outline-danger">退出</button></div>
+  </div>
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item"><a class="nav-link ${activeTab === 'rooms' ? 'active' : ''}" href="/dashboard/rooms">房间</a></li>
+    <li class="nav-item"><a class="nav-link ${activeTab === 'logs' ? 'active' : ''}" href="/dashboard/logs">日志</a></li>
+    <li class="nav-item"><a class="nav-link ${activeTab === 'notify' ? 'active' : ''}" href="/dashboard/notify">通知配置</a></li>
+  </ul>
+  <div id="content">${bodyContent}</div>
+</div>
+<script>
+${COMMON_JS}
+// 主题切换
+document.getElementById('themeToggle').addEventListener('click', function() {
+  var html = document.documentElement;
+  var theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-bs-theme', theme);
+  this.textContent = theme === 'dark' ? '亮色' : '深色';
+});
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+  document.documentElement.setAttribute('data-bs-theme', 'dark');
+  document.getElementById('themeToggle').textContent = '亮色';
+}
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+// 认证检查
+(async function() {
+  if (!(await checkAuth())) {
+    window.location.href = '/login';
+    return;
+  }
+  if (typeof initPage === 'function') {
+    await initPage();
+  }
+})();
+${pageScript}
+</script>
+</body>
+</html>`;
 }
 
-function showMainPanel() {
-  document.getElementById('loginPanel').style.display = 'none';
-  document.getElementById('mainPanel').style.display = 'block';
-}
-
+// ========== 房间管理页面 ==========
+const ROOMS_PAGE = dashboardTemplate(`
+<div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-house-door"></i> 监控房间<div class="ms-auto d-flex flex-wrap gap-2"><button id="addRoomBtn" class="btn btn-sm btn-light"><i class="bi bi-plus-circle"></i> 添加</button><button id="checkAllBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-repeat"></i> 检查</button><button id="refreshRoomsBtn" class="btn btn-sm btn-light"><i class="bi bi-cloud-refresh"></i> 刷新</button><button id="sendLiveBtn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> 模拟</button><div class="input-group input-group-sm" style="width:200px;"><input id="singleCheckInput" class="form-control" placeholder="房间号"><button id="singleCheckBtn" class="btn btn-light">查</button></div></div></div><div class="card-body"><div id="roomContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3"></div></div></div>
+<div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
+<div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 id="modalTitle" class="modal-title">提示</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="modalMessage"></div><div class="modal-footer"><button type="button" id="modalConfirmBtn" class="btn btn-primary">确定</button><button type="button" id="modalCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">取消</button></div></div></div></div>
+`, 'rooms', `
 async function renderRooms() {
   var container = document.getElementById('roomContainer');
   try {
@@ -290,132 +311,29 @@ async function renderRooms() {
   }
 }
 
-var allLogs = [];
-async function fetchLogs() {
-  try {
-    var res = await axios.get('/api/logs');
-    allLogs = res.data;
-    renderLogs();
-  } catch (e) {
-    console.error('获取日志失败', e);
-  }
-}
-
-function renderLogs() {
-  var container = document.getElementById('logContainer');
-  var search = document.getElementById('logSearch').value.toLowerCase();
-  var level = document.getElementById('logLevelFilter').value;
-  var filtered = allLogs;
-  if (search) filtered = filtered.filter(function(e) {
-    var msg = String(e.message || '').toLowerCase();
-    return msg.includes(search);
+function initRoomsEvents() {
+  var addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
+  document.getElementById('addRoomBtn').addEventListener('click', function() {
+    document.getElementById('roomInput').value = '';
+    addRoomModal.show();
   });
-  if (level) filtered = filtered.filter(function(e) { return e.level === level; });
-  if (!filtered.length) {
-    container.innerHTML = '<div class="text-secondary">暂无日志</div>';
-    return;
-  }
-  var html = '';
-  for (var i = 0; i < filtered.length; i++) {
-    var entry = filtered[i];
-    var levelColor = { info: 'log-level-info', warn: 'log-level-warn', error: 'log-level-error' }[entry.level] || '';
-    html += '<div class="log-entry"><span class="log-time">' + escapeHtml(entry.time) + '</span><span class="' + levelColor + '">[' + escapeHtml(entry.level.toUpperCase()) + ']</span> ' + escapeHtml(entry.message) + '</div>';
-  }
-  container.innerHTML = html;
-}
-
-async function renderConfigs() {
-  var tbody = document.getElementById('configTableBody');
-  try {
-    var res = await axios.get('/api/notify-configs');
-    var configs = res.data;
-    if (!configs.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无配置</td></tr>';
-      return;
+  document.getElementById('addRoomConfirmBtn').addEventListener('click', async function() {
+    var roomId = document.getElementById('roomInput').value.trim();
+    if (!roomId) { showMessage('请输入房间号', 'error'); return; }
+    this.disabled = true;
+    this.textContent = '提交中...';
+    try {
+      await axios.post('/api/rooms', { room_id: roomId });
+      addRoomModal.hide();
+      showMessage('房间 ' + roomId + ' 已添加', 'info');
+      await renderRooms();
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('添加失败: ' + errMsg, 'error');
     }
-    var html = '';
-    for (var i = 0; i < configs.length; i++) {
-      var cfg = configs[i];
-      var protocolLabel = { telegram: 'Telegram', onebot_private: 'OneBot私聊', onebot_group: 'OneBot群聊', discord: 'Discord', custom_webhook: '自定义Webhook' }[cfg.protocol] || cfg.protocol;
-      var status = cfg.enabled ? '启用' : '禁用';
-      var statusColor = cfg.enabled ? 'success' : 'secondary';
-      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
-    }
-    tbody.innerHTML = html;
-  } catch (e) {
-    showMessage('加载配置失败: ' + e.message, 'error');
-  }
-}
-
-var logTimer = null;
-
-function initMainEvents() {
-  if (logTimer) {
-    clearInterval(logTimer);
-    logTimer = null;
-  }
-
-  document.getElementById('themeToggle').addEventListener('click', function() {
-    var html = document.documentElement;
-    var theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-bs-theme', theme);
-    this.textContent = theme === 'dark' ? '亮色' : '深色';
+    this.disabled = false;
+    this.textContent = '完成';
   });
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    document.documentElement.setAttribute('data-bs-theme', 'dark');
-    document.getElementById('themeToggle').textContent = '亮色';
-  }
-
-  document.getElementById('logoutBtn').addEventListener('click', logout);
-
-  document.getElementById('refreshLogsBtn').addEventListener('click', fetchLogs);
-  document.getElementById('logSearch').addEventListener('input', renderLogs);
-  document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
-  document.getElementById('autoRefresh').addEventListener('change', function() {
-    if (this.checked) {
-      if (logTimer) clearInterval(logTimer);
-      logTimer = setInterval(fetchLogs, 5000);
-      fetchLogs();
-    } else {
-      if (logTimer) {
-        clearInterval(logTimer);
-        logTimer = null;
-      }
-    }
-  });
-  if (document.getElementById('autoRefresh').checked) {
-    if (logTimer) clearInterval(logTimer);
-    logTimer = setInterval(fetchLogs, 5000);
-    fetchLogs();
-  }
-
-  var addRoomModal = null;
-  if (typeof bootstrap !== 'undefined') {
-    addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
-    document.getElementById('addRoomBtn').addEventListener('click', function() {
-      document.getElementById('roomInput').value = '';
-      addRoomModal.show();
-    });
-    document.getElementById('addRoomConfirmBtn').addEventListener('click', async function() {
-      var roomId = document.getElementById('roomInput').value.trim();
-      if (!roomId) { showMessage('请输入房间号', 'error'); return; }
-      this.disabled = true;
-      this.textContent = '提交中...';
-      try {
-        await axios.post('/api/rooms', { room_id: roomId });
-        addRoomModal.hide();
-        showMessage('房间 ' + roomId + ' 已添加', 'info');
-        await renderRooms();
-      } catch (e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        showMessage('添加失败: ' + errMsg, 'error');
-      }
-      this.disabled = false;
-      this.textContent = '完成';
-    });
-  } else {
-    console.warn('Bootstrap未加载，模态框功能不可用');
-  }
 
   document.addEventListener('click', async function(e) {
     var btn = closest(e.target, '.delete-room-btn');
@@ -488,6 +406,75 @@ function initMainEvents() {
     this.disabled = false;
     this.innerHTML = '查';
   });
+}
+
+window.initPage = async function() {
+  await renderRooms();
+  initRoomsEvents();
+};
+`);
+
+// ========== 日志页面 ==========
+const LOGS_PAGE = dashboardTemplate(`
+<div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-journal-text"></i> 运行日志<div class="ms-auto d-flex gap-2 flex-wrap"><button id="clearLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-trash"></i> 清除</button><button id="refreshLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-clockwise"></i> 刷新</button><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="autoRefresh" checked><label class="form-check-label" for="autoRefresh">自动</label></div><input id="logSearch" class="form-control form-control-sm" placeholder="搜索..." style="width:120px;"><select id="logLevelFilter" class="form-select form-select-sm" style="width:auto;"><option value="">全部</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option></select><button id="exportLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-download"></i></button></div></div><div class="card-body"><div id="logContainer" class="log-box"></div></div></div>
+`, 'logs', `
+var allLogs = [];
+var logTimer = null;
+
+async function fetchLogs() {
+  try {
+    var res = await axios.get('/api/logs');
+    allLogs = res.data;
+    renderLogs();
+  } catch (e) {
+    console.error('获取日志失败', e);
+  }
+}
+
+function renderLogs() {
+  var container = document.getElementById('logContainer');
+  var search = document.getElementById('logSearch').value.toLowerCase();
+  var level = document.getElementById('logLevelFilter').value;
+  var filtered = allLogs;
+  if (search) filtered = filtered.filter(function(e) {
+    var msg = String(e.message || '').toLowerCase();
+    return msg.includes(search);
+  });
+  if (level) filtered = filtered.filter(function(e) { return e.level === level; });
+  if (!filtered.length) {
+    container.innerHTML = '<div class="text-secondary">暂无日志</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var entry = filtered[i];
+    var levelColor = { info: 'log-level-info', warn: 'log-level-warn', error: 'log-level-error' }[entry.level] || '';
+    html += '<div class="log-entry"><span class="log-time">' + escapeHtml(entry.time) + '</span><span class="' + levelColor + '">[' + escapeHtml(entry.level.toUpperCase()) + ']</span> ' + escapeHtml(entry.message) + '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function initLogsEvents() {
+  document.getElementById('refreshLogsBtn').addEventListener('click', fetchLogs);
+  document.getElementById('logSearch').addEventListener('input', renderLogs);
+  document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
+  document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+      if (logTimer) clearInterval(logTimer);
+      logTimer = setInterval(fetchLogs, 5000);
+      fetchLogs();
+    } else {
+      if (logTimer) {
+        clearInterval(logTimer);
+        logTimer = null;
+      }
+    }
+  });
+  if (document.getElementById('autoRefresh').checked) {
+    if (logTimer) clearInterval(logTimer);
+    logTimer = setInterval(fetchLogs, 5000);
+    fetchLogs();
+  }
 
   document.getElementById('clearLogsBtn').addEventListener('click', async function() {
     if (!confirm('确定清除所有日志吗？')) return;
@@ -507,30 +494,67 @@ function initMainEvents() {
     a.href = url; a.download = 'logs.json'; a.click();
     URL.revokeObjectURL(url);
   });
+}
 
-  function updateNotifyForm() {
-    var val = document.getElementById('protocolSelect').value;
-    var tgTokenGroup = document.getElementById('tgTokenGroup');
-    var receiverLabel = document.getElementById('receiverLabel');
-    var chatId = document.getElementById('chatId');
-    if (val === 'telegram') {
-      tgTokenGroup.style.display = 'block';
-      receiverLabel.textContent = '接收者 ID (chat_id)';
+window.initPage = async function() {
+  await fetchLogs();
+  initLogsEvents();
+};
+`);
+
+// ========== 通知配置页面 ==========
+const NOTIFY_PAGE = dashboardTemplate(`
+<div class="card mb-3"><div class="card-header"><i class="bi bi-plus-circle"></i> 添加通知配置</div><div class="card-body"><form id="addNotifyForm" class="row g-3"><div class="col-md-4"><label class="form-label">名称</label><input type="text" name="name" class="form-control" placeholder="" required></div><div class="col-md-4"><label class="form-label">协议</label><select name="protocol" id="protocolSelect" class="form-select"><option value="telegram">Telegram</option><option value="onebot_private">OneBot 私聊</option><option value="onebot_group">OneBot 群聊</option><option value="discord">Discord Webhook</option><option value="custom_webhook">自定义 Webhook</option></select></div><input type="hidden" id="apiUrl" name="api_url"><div class="col-md-6" id="tgTokenGroup"><label class="form-label">Bot Token</label><input type="text" id="tgToken" name="tg_token" class="form-control" placeholder=""><small class="text-muted">自动构建 API 地址</small></div><div class="col-md-6"><label class="form-label" id="receiverLabel">接收者 ID</label><input type="text" name="chat_id" id="chatId" class="form-control" placeholder=""></div><div class="col-12"><label class="form-label">通知模板 (可选)</label><textarea name="template" id="templateArea" class="form-control" rows="6">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea></div><div class="col-12"><button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> 添加配置</button></div></form></div></div>
+<div class="card"><div class="card-header"><i class="bi bi-list-ul"></i> 现有配置</div><div class="card-body"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>名称</th><th>协议</th><th>状态</th><th>操作</th></tr></thead><tbody id="configTableBody"></tbody></table></div></div></div>
+`, 'notify', `
+async function renderConfigs() {
+  var tbody = document.getElementById('configTableBody');
+  try {
+    var res = await axios.get('/api/notify-configs');
+    var configs = res.data;
+    if (!configs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无配置</td></tr>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < configs.length; i++) {
+      var cfg = configs[i];
+      var protocolLabel = { telegram: 'Telegram', onebot_private: 'OneBot私聊', onebot_group: 'OneBot群聊', discord: 'Discord', custom_webhook: '自定义Webhook' }[cfg.protocol] || cfg.protocol;
+      var status = cfg.enabled ? '启用' : '禁用';
+      var statusColor = cfg.enabled ? 'success' : 'secondary';
+      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
+    }
+    tbody.innerHTML = html;
+  } catch (e) {
+    showMessage('加载配置失败: ' + e.message, 'error');
+  }
+}
+
+function updateNotifyForm() {
+  var val = document.getElementById('protocolSelect').value;
+  var tgTokenGroup = document.getElementById('tgTokenGroup');
+  var receiverLabel = document.getElementById('receiverLabel');
+  var chatId = document.getElementById('chatId');
+  if (val === 'telegram') {
+    tgTokenGroup.style.display = 'block';
+    receiverLabel.textContent = '接收者 ID (chat_id)';
+    chatId.placeholder = '';
+  } else {
+    tgTokenGroup.style.display = 'none';
+    if (val === 'onebot_private') {
+      receiverLabel.textContent = '用户 ID (user_id)';
+      chatId.placeholder = '';
+    } else if (val === 'onebot_group') {
+      receiverLabel.textContent = '群 ID (group_id)';
       chatId.placeholder = '';
     } else {
-      tgTokenGroup.style.display = 'none';
-      if (val === 'onebot_private') {
-        receiverLabel.textContent = '用户 ID (user_id)';
-        chatId.placeholder = '';
-      } else if (val === 'onebot_group') {
-        receiverLabel.textContent = '群 ID (group_id)';
-        chatId.placeholder = '';
-      } else {
-        receiverLabel.textContent = '接收者 ID (可选)';
-        chatId.placeholder = '';
-      }
+      receiverLabel.textContent = '接收者 ID (可选)';
+      chatId.placeholder = '';
     }
   }
+}
+
+function initNotifyEvents() {
   document.getElementById('protocolSelect').addEventListener('change', updateNotifyForm);
   updateNotifyForm();
 
@@ -628,105 +652,29 @@ function initMainEvents() {
   });
 }
 
-function init() {
-  console.log('[CTN] 页面初始化');
-  var loginForm = document.getElementById('loginForm');
-  if (!loginForm) {
-    console.error('找不到 loginForm');
-    return;
-  }
-  loginForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    console.log('[CTN] 点击登录');
-    var btn = loginForm.querySelector('button');
-    var errorEl = document.getElementById('loginError');
-    errorEl.style.display = 'none';
-    btn.disabled = true;
-    btn.innerHTML = '登录中...';
-    try {
-      var username = document.getElementById('loginUsername').value.trim();
-      var password = document.getElementById('loginPassword').value;
-      if (!username || !password) {
-        throw new Error('请输入用户名和密码');
-      }
-      var result = await login(username, password);
-      if (result.success) {
-        console.log('[CTN] 登录成功，切换面板');
-        history.replaceState(null, '', '/');
-        showMainPanel();
-        await renderRooms();
-        await renderConfigs();
-        await fetchLogs();
-        initMainEvents();
-      } else {
-        throw new Error('登录失败');
-      }
-    } catch(err) {
-      console.error('[CTN] 登录失败', err);
-      errorEl.innerText = err.message || '登录失败';
-      errorEl.style.display = 'block';
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '登录';
-    }
-  });
-
-  (async function() {
-    var authed = false;
-    try {
-      authed = await checkAuth();
-    } catch(e) {
-      console.error('认证检测失败', e);
-    }
-    if (authed) {
-      showMainPanel();
-      await renderRooms();
-      await renderConfigs();
-      await fetchLogs();
-      initMainEvents();
-    } else {
-      showLoginPanel();
-    }
-  })();
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
-
-window.onerror = function(msg, url, line, col, error) {
-  console.error('[GLOBAL]', msg, url, line, col, error);
-  reportError(error || new Error(msg), 'global');
-  return false;
+window.initPage = async function() {
+  await renderConfigs();
+  initNotifyEvents();
 };
+`);
 
-window.addEventListener('unhandledrejection', function(e) {
-  console.error('Promise错误', e.reason);
-});
-</script>
-</body>
-</html>
-`;
-
+// ========== Worker 主入口 ==========
 export default {
   async fetch(request, env) {
     const backendUrl = env.BACKEND_URL;
     if (!backendUrl) {
       return new Response('环境变量 BACKEND_URL 未设置', { status: 500 });
     }
-    const base = backendUrl.replace(/\/$/, '');
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 所有 /api 请求代理到后端
+    // API 代理
     if (path.startsWith('/api/')) {
-      const target = base + path + url.search;
+      const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
       headers.delete('host');
 
-      // 强制注入 ctn32 Cookie（忽略大小写）
+      // 强制注入 ctn32
       let cookie = headers.get('Cookie') || '';
       if (!/(^|;\s*)ctn32=ctn32/i.test(cookie)) {
         cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
@@ -747,14 +695,13 @@ export default {
       );
 
       const outHeaders = new Headers();
-      // 复制所有非 Set-Cookie 头
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
           outHeaders.append(key, value);
         }
       }
 
-      // 重写 Set-Cookie：移除 Domain，强制 Path=/，添加 SameSite=None; Secure
+      // 重写 Set-Cookie
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -773,7 +720,6 @@ export default {
         }
       }
 
-      // 禁止缓存
       outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
       outHeaders.set('Pragma', 'no-cache');
       outHeaders.set('Expires', '0');
@@ -784,14 +730,35 @@ export default {
       });
     }
 
-    // SPA: 非 API 请求返回 HTML
-    return new Response(HTML, {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
+    // 路由
+    if (path === '/login') {
+      return new Response(LOGIN_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/rooms') {
+      return new Response(ROOMS_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/logs') {
+      return new Response(LOGS_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/notify') {
+      return new Response(NOTIFY_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/') {
+      // 重定向到仪表盘（页面 JS 会检查认证）
+      return new Response(null, {
+        status: 302,
+        headers: { 'Location': '/dashboard/rooms' }
+      });
+    }
+
+    return new Response('Not Found', { status: 404 });
   }
 };
