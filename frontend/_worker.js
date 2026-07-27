@@ -659,7 +659,7 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口 ==========
+// ========== Worker 主入口（已修复） ==========
 export default {
   async fetch(request, env) {
     // 从环境变量读取后端地址
@@ -679,7 +679,11 @@ export default {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 保留原始 Host 信息
+      // 强制设置正确的 Origin 和 Referer（修复自定义域名跨域问题）
+      headers.set('Origin', 'https://live.ctn32.us.kg');
+      headers.set('Referer', 'https://live.ctn32.us.kg/');
+
+      // 保留原始 Host 信息（用于后端日志）
       headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
       headers.set('X-Forwarded-Proto', 'https');
 
@@ -722,13 +726,15 @@ export default {
         );
       }
 
-      // 构建响应头，透传 Set-Cookie
+      // 构建响应头
       const outHeaders = new Headers();
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
           outHeaders.append(key, value);
         }
       }
+
+      // 透传 Set-Cookie（使用 append，确保多个 Cookie 不被覆盖）
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -737,7 +743,7 @@ export default {
       } else {
         const cookie = response.headers.get('set-cookie');
         if (cookie) {
-          outHeaders.set('Set-Cookie', cookie);
+          outHeaders.append('Set-Cookie', cookie);
         }
       }
 
