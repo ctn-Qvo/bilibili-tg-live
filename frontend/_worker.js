@@ -66,7 +66,6 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 </div>
 <div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
 <div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 id="modalTitle" class="modal-title">提示</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="modalMessage"></div><div class="modal-footer"><button type="button" id="modalConfirmBtn" class="btn btn-primary">确定</button><button type="button" id="modalCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">取消</button></div></div></div></div>
-<!-- 错误详情模态框 -->
 <div class="modal fade" id="errorDetailModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -82,10 +81,32 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
   </div>
 </div>
 <script>
-document.cookie = 'ctn32=ctn32; path=/; domain=.262832.xyz; Secure; SameSite=Lax';
+(function() {
+  try {
+    if (!document.cookie.includes("ctn32=ctn32")) {
+      document.cookie = "ctn32=ctn32; path=/; Secure; SameSite=None";
+    }
+  } catch(e) {
+    console.warn("cookie设置失败", e);
+  }
+})();
 
-axios.defaults.withCredentials = true;
 axios.defaults.baseURL = '';
+axios.defaults.withCredentials = true;
+axios.defaults.timeout = 10000;
+axios.interceptors.response.use(
+  function(response) { return response; },
+  function(error) {
+    if (error.code === "ECONNABORTED") {
+      showMessage("请求超时，请检查网络", "error");
+    } else if (error.response) {
+      console.error("API错误:", error.response.status, error.response.data);
+    } else {
+      console.error("网络错误:", error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 
 function showMessage(msg, type) {
   type = type || 'info';
@@ -178,27 +199,26 @@ async function checkAuth() {
 }
 
 async function login(username, password) {
+  var res = await fetch('/api/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username, password: password })
+  });
+  var text = await res.text();
+  var data;
   try {
-    var res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ username: username, password: password })
-    });
-    var contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      var text = await res.text();
-      throw new Error('服务器返回非 JSON 响应，错误片段: ' + text.substring(0, 200));
-    }
-    var data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || '登录失败');
-    }
-    return true;
-  } catch (e) {
-    await showErrorWithDetail('登录失败，请检查用户名密码或后端服务。', e, 'login');
-    throw e;
+    data = JSON.parse(text);
+  } catch(e) {
+    throw new Error('服务器返回异常:\n' + text.substring(0, 100));
   }
+  if (!res.ok) {
+    throw new Error(data.error || 'HTTP ' + res.status);
+  }
+  if (!data.success) {
+    throw new Error(data.error || '登录失败');
+  }
+  return true;
 }
 
 function logout() {
@@ -555,32 +575,45 @@ function initMainEvents() {
   });
 }
 
-window.onload = async function() {
+window.addEventListener('DOMContentLoaded', async function() {
   showLoginPanel();
-  var authed = await checkAuth();
+  var loginForm = document.getElementById('loginForm');
+  loginForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var btn = loginForm.querySelector('button');
+    var errorEl = document.getElementById('loginError');
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.innerHTML = '登录中...';
+    try {
+      await login(
+        document.getElementById('loginUsername').value.trim(),
+        document.getElementById('loginPassword').value
+      );
+      location.replace('/');
+    } catch(err) {
+      errorEl.innerText = err.message || '登录失败';
+      errorEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '登录';
+    }
+  });
+
+  var authed = false;
+  try {
+    authed = await checkAuth();
+  } catch(e) {
+    console.error(e);
+  }
   if (authed) {
     showMainPanel();
     await renderRooms();
     await renderConfigs();
     await fetchLogs();
     initMainEvents();
-  } else {
-    document.getElementById('loginForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      var username = document.getElementById('loginUsername').value;
-      var password = document.getElementById('loginPassword').value;
-      var errorEl = document.getElementById('loginError');
-      errorEl.style.display = 'none';
-      try {
-        await login(username, password);
-        location.replace('/');
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = 'block';
-      }
-    });
   }
-};
+});
 </script>
 </body>
 </html>`;
@@ -596,10 +629,12 @@ export default {
 
     if (path.startsWith('/api/')) {
       const target = backendUrl + path + url.search;
+      const headers = new Headers(request.headers);
+      headers.delete('host');
       const newReq = new Request(target, {
         method: request.method,
-        headers: request.headers,
-        body: request.body,
+        headers: headers,
+        body: (request.method === 'GET' || request.method === 'HEAD') ? null : request.body,
         redirect: 'manual'
       });
       return fetch(newReq);
