@@ -93,6 +93,7 @@ axios.interceptors.response.use(
       console.error('API错误:', error.response.status, error.response.data);
     } else {
       console.error('网络错误:', error.message);
+      showMessage('网络连接失败，请检查网络或后端服务', 'error');
     }
     return Promise.reject(error);
   }
@@ -658,26 +659,31 @@ window.initPage = async function() {
 };
 `);
 
-// ========== Worker 主入口（已修复） ==========
+// ========== Worker 主入口 ==========
 export default {
   async fetch(request, env) {
+    // 从环境变量读取后端地址
     const backendUrl = env.BACKEND_URL;
     if (!backendUrl) {
-      return new Response('环境变量 BACKEND_URL 未设置', { status: 500 });
+      return new Response(
+        JSON.stringify({ error: 'BACKEND_URL 环境变量未设置' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
+
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // API 代理
+    // 代理所有 /api/* 请求到后端
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 1. 保留 Host 信息（通过 X-Forwarded-Host）
+      // 保留原始 Host 信息
       headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
       headers.set('X-Forwarded-Proto', 'https');
 
-      // 2. 强制注入 ctn32 Cookie（若不存在）
+      // 注入 ctn32 Cookie（绕过防火墙）
       const oldCookie = request.headers.get('cookie') || '';
       let newCookie = oldCookie;
       if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
@@ -685,12 +691,11 @@ export default {
       }
       headers.set('Cookie', newCookie);
 
-      // 3. 准备请求体
+      // 准备请求体
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
         ? undefined
         : await request.arrayBuffer();
 
-      // 4. 发送请求（捕获异常）
       let response;
       try {
         response = await fetch(
@@ -702,11 +707,13 @@ export default {
           })
         );
       } catch (e) {
+        // 网络错误捕获，返回详细 JSON
         return new Response(
           JSON.stringify({
             error: 'Backend proxy failed',
             message: e.message,
-            target: target
+            target: target,
+            stack: e.stack
           }),
           {
             status: 502,
@@ -715,15 +722,13 @@ export default {
         );
       }
 
-      // 5. 构建响应头
+      // 构建响应头，透传 Set-Cookie
       const outHeaders = new Headers();
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
           outHeaders.append(key, value);
         }
       }
-
-      // 6. 透传 Set-Cookie（不修改）
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -736,7 +741,7 @@ export default {
         }
       }
 
-      // 7. 禁止缓存
+      // 禁用缓存
       outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
       outHeaders.set('Pragma', 'no-cache');
       outHeaders.set('Expires', '0');
@@ -747,7 +752,7 @@ export default {
       });
     }
 
-    // 路由
+    // 路由：返回对应 HTML 页面
     if (path === '/login') {
       return new Response(LOGIN_PAGE, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
