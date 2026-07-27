@@ -310,7 +310,7 @@ function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': env.FRONTEND_URL || 'https://live.ctn32.us.kg',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CTN-Cookie',
     'Access-Control-Allow-Credentials': 'true'
   };
 }
