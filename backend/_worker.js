@@ -455,7 +455,12 @@ async function handleRequest(request, env) {
 
 export default {
   async fetch(request, env) {
-    return handleRequest(request, env);
+    try {
+      return await handleRequest(request, env);
+    } catch (e) {
+      console.error('Fatal fetch error:', e);
+      return jsonResponse({ error: '致命错误: ' + e.message }, 500, env);
+    }
   },
   async scheduled(event, env) {
     await addLog('info', 'Cron检测启动', env);
