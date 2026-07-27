@@ -42,6 +42,23 @@ async function getLogs(env) { const { results } = await env.DB.prepare('SELECT t
 async function addLog(level, message, env) { const time = new Date().toISOString(); await env.DB.prepare('INSERT INTO system_logs (time, level, message) VALUES (?, ?, ?)').bind(time, level, message).run(); await env.DB.prepare(`DELETE FROM system_logs WHERE id NOT IN (SELECT id FROM system_logs ORDER BY time DESC LIMIT ?)`).bind(CONFIG.MAX_LOG_ENTRIES).run(); console.log(`[${time}] [${level.toUpperCase()}] ${message}`); }
 async function clearLogs(env) { await env.DB.prepare('DELETE FROM system_logs').run(); await addLog('info', '日志已清除', env); }
 
+// ---------- 客户端错误操作 ----------
+async function getClientErrors(env, limit = 50) {
+  const { results } = await env.DB.prepare('SELECT id, timestamp, message, url, user_agent, context FROM client_errors ORDER BY timestamp DESC LIMIT ?').bind(limit).all();
+  return results;
+}
+async function getClientError(env, id) {
+  const row = await env.DB.prepare('SELECT * FROM client_errors WHERE id = ?').bind(id).first();
+  return row;
+}
+async function addClientError(env, data) {
+  const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO client_errors (id, timestamp, message, stack, url, user_agent, context, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, timestamp, data.message, data.stack || '', data.url || '', data.user_agent || '', data.context || '', JSON.stringify(data.extra || {})).run();
+  return id;
+}
+
+// ---------- 请求头伪装 ----------
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
@@ -79,6 +96,7 @@ function buildBrowserHeaders() {
   };
 }
 
+// ---------- 外部 API ----------
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   try {
@@ -145,6 +163,7 @@ async function fetchUserInfo(uid) {
   return data;
 }
 
+// ---------- 通知 ----------
 async function sendNotificationToConfig(config, text, extra) { extra = extra || {}; try { let payload = {}; if (config.protocol === 'discord') { payload = { content: text }; } else if (config.protocol === 'custom_webhook') { payload = extra; } else { const receiverKey = config.receiver_key || 'chat_id'; const messageKey = config.message_key || 'text'; payload[receiverKey] = config.chat_id; payload[messageKey] = text; } if (config.extra_params) Object.assign(payload, config.extra_params); const resp = await fetch(config.api_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (resp.ok) return { success: true }; const errText = await resp.text(); return { success: false, error: errText }; } catch (e) { return { success: false, error: e.message }; } }
 async function sendNotification(text, env, extra) { extra = extra || {}; const configs = await getNotifyConfigs(env); const enabled = configs.filter(c => c.enabled); if (enabled.length === 0) { await addLog('warn', '没有启用的通知配置', env); return false; } let success = false; for (const config of enabled) { const result = await sendNotificationToConfig(config, text, extra); if (result.success) success = true; } return success; }
 
@@ -198,6 +217,7 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   return renderTemplate(template, baseVars);
 }
 
+// ---------- 监控逻辑 ----------
 async function processRoom(roomId, env, options) {
   options = options || {};
   roomId = toRoomId(roomId);
@@ -269,6 +289,7 @@ async function processRoom(roomId, env, options) {
 
 async function monitorAll(env, options) { options = options || {}; const roomIds = await getRoomList(env); if (roomIds.length === 0) { await addLog('warn', '房间列表为空，跳过检查', env); return { error: '房间列表为空' }; } await addLog('info', '开始批量检查 ' + roomIds.length + ' 个房间' + (options.force ? ' (强制刷新)' : ''), env); const results = []; for (const id of roomIds) { const roomId = toRoomId(id); try { const res = await processRoom(roomId, env, { force: options.force }); results.push({ room_id: roomId, ...res }); } catch (e) { await addLog('error', '处理房间 ' + roomId + ' 失败: ' + e.message, env); results.push({ room_id: roomId, error: e.message }); } } await addLog('info', '批量检查完成，共 ' + results.length + ' 个结果', env); return results; }
 
+// ---------- 认证 ----------
 function isAuthenticated(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const authCookie = cookie.split(';').find(c => c.trim().startsWith('auth='));
@@ -300,6 +321,7 @@ function corsHeaders(env) {
   };
 }
 
+// ---------- 路由处理 ----------
 async function handleRequest(request, env) {
   try {
     const url = new URL(request.url);
@@ -308,6 +330,7 @@ async function handleRequest(request, env) {
 
     if (method === 'OPTIONS') return new Response(null, { headers: corsHeaders(env) });
 
+    // 登录
     if (path === '/api/login' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const { username, password } = body;
@@ -322,6 +345,7 @@ async function handleRequest(request, env) {
       } else return jsonResponse({ success: false, error: '用户名或密码错误' }, 401, env);
     }
 
+    // 登出
     if (path === '/api/logout' && method === 'POST') {
       const headers = {
         ...corsHeaders(env),
@@ -331,20 +355,22 @@ async function handleRequest(request, env) {
       return new Response(JSON.stringify({ success: true }), { headers });
     }
 
+    // 获取当前用户
     if (path === '/api/me' && method === 'GET') {
       if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, env);
       return jsonResponse({ username: env.ADMIN_USER }, 200, env);
     }
 
+    // 以下需要认证
     if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, env);
 
+    // ---------- 房间 ----------
     if (path === '/api/rooms' && method === 'GET') {
       const rooms = await getRoomList(env);
       const states = {};
       for (const id of rooms) states[id] = await getMonitorState(env, id);
       return jsonResponse({ rooms, states }, 200, env);
     }
-
     if (path === '/api/rooms' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
@@ -354,7 +380,6 @@ async function handleRequest(request, env) {
       try { await processRoom(roomId, env, { force: true }); } catch (e) {}
       return jsonResponse({ success: true }, 200, env);
     }
-
     if (path === '/api/rooms' && method === 'DELETE') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const roomId = toRoomId(body.room_id || '');
@@ -364,6 +389,7 @@ async function handleRequest(request, env) {
       return jsonResponse({ success: true }, 200, env);
     }
 
+    // ---------- 日志 ----------
     if (path === '/api/logs' && method === 'GET') {
       const logs = await getLogs(env);
       return jsonResponse(logs, 200, env);
@@ -373,6 +399,7 @@ async function handleRequest(request, env) {
       return jsonResponse({ success: true }, 200, env);
     }
 
+    // ---------- 通知配置 ----------
     if (path === '/api/notify-configs' && method === 'GET') {
       const configs = await getNotifyConfigs(env);
       return jsonResponse(configs, 200, env);
@@ -420,6 +447,7 @@ async function handleRequest(request, env) {
       } catch (e) { return jsonResponse({ error: e.message }, 500, env); }
     }
 
+    // ---------- 监控 ----------
     if (path === '/api/monitor' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const force = body.force === true;
@@ -428,6 +456,7 @@ async function handleRequest(request, env) {
       return jsonResponse(result, 200, env);
     }
 
+    // ---------- 模拟通知 ----------
     if (path === '/api/send-live-notify' && method === 'POST') {
       const roomIds = await getRoomList(env);
       if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, env);
@@ -444,6 +473,34 @@ async function handleRequest(request, env) {
         const success = await sendNotification(text, env, { event: eventType, room_id: roomId, ...current });
         if (success) { await addLog('info', '手动发送模拟通知 ' + roomId, env); return jsonResponse({ success: true, message: '已发送 ' + eventType + ' 通知' }, 200, env); } else { return jsonResponse({ success: false, error: '通知发送失败，请检查配置' }, 500, env); }
       } catch (e) { return jsonResponse({ error: e.message }, 500, env); }
+    }
+
+    // ---------- 客户端错误上报 ----------
+    if (path === '/api/client-errors' && method === 'POST') {
+      let body; try { body = await request.json(); } catch { body = {}; }
+      const id = await addClientError(env, {
+        message: body.message || '未知错误',
+        stack: body.stack || '',
+        url: body.url || '',
+        user_agent: body.user_agent || '',
+        context: body.context || 'unknown',
+        extra: body.extra || {}
+      });
+      return jsonResponse({ id, success: true }, 200, env);
+    }
+
+    if (path === '/api/client-errors' && method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit')) || 50;
+      const errors = await getClientErrors(env, limit);
+      return jsonResponse(errors, 200, env);
+    }
+
+    if (path.startsWith('/api/client-errors/') && method === 'GET') {
+      const id = path.split('/')[3];
+      if (!id) return jsonResponse({ error: '缺少错误ID' }, 400, env);
+      const error = await getClientError(env, id);
+      if (!error) return jsonResponse({ error: '错误不存在' }, 404, env);
+      return jsonResponse(error, 200, env);
     }
 
     return jsonResponse({ error: 'Not Found' }, 404, env);
