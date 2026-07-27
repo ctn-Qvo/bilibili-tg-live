@@ -11,42 +11,11 @@ const HTML = `
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/axios@1.11.0/dist/axios.min.js"></script>
-<script>
-  if (typeof axios === 'undefined') {
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.11.0/axios.min.js"><\/script>');
-  }
-</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  if (typeof bootstrap === 'undefined') {
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstrap.bundle.min.js"><\/script>');
-  }
-</script>
 <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.2/dist/sweetalert2.all.min.js"></script>
-<script>
-  if (typeof Swal === 'undefined') {
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.22.2/sweetalert2.all.min.js"><\/script>');
-  }
-</script>
 <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.2/dist/sweetalert2.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
-<script>
-  if (typeof Chart === 'undefined') {
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"><\/script>');
-  }
-</script>
-<script>
-  window.addEventListener('load', function() {
-    var links = document.querySelectorAll('link[href*="bootstrap-icons"]');
-    if (!links.length) {
-      var l = document.createElement('link');
-      l.rel = 'stylesheet';
-      l.href = 'https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css';
-      document.head.appendChild(l);
-    }
-  });
-</script>
 <style>
 :root{--bg:#f0f5ff;--card-bg:#ffffff;--primary:#2b6cb5;--text:#1a365d}
 [data-bs-theme="dark"]{--bg:#1a202c;--card-bg:#2d3748;--primary:#4a8bdb;--text:#e2e8f0}
@@ -120,11 +89,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 (function() {
   function ensureCTNCookie() {
     try {
-      var exists = document.cookie.split(';').some(function(v) {
-        return v.trim() === 'ctn32=ctn32';
-      });
-      if (!exists) {
-        document.cookie = 'ctn32=ctn32; path=/; max-age=86400; SameSite=Lax';
+      if (document.cookie.indexOf('ctn32=ctn32') === -1) {
+        document.cookie = 'ctn32=ctn32; path=/; max-age=86400; SameSite=None; Secure';
       }
     } catch(e) {
       console.warn('CTN cookie init failed', e);
@@ -143,12 +109,6 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 
   axios.interceptors.request.use(function(config) {
     ensureCTNCookie();
-    var cookies = document.cookie || '';
-    if (!cookies.includes('ctn32=ctn32')) {
-      cookies += (cookies ? '; ' : '') + 'ctn32=ctn32';
-    }
-    config.headers['Cookie'] = cookies;
-    config.headers['X-CTN-Cookie'] = 'ctn32=ctn32';
     return config;
   }, function(error) {
     return Promise.reject(error);
@@ -275,8 +235,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
       cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-CTN-Cookie': 'ctn32=ctn32'
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
       },
       body: JSON.stringify({ username: username, password: password })
     });
@@ -439,8 +399,9 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
       fetchLogs();
     }
 
+    var addRoomModal = null;
     if (typeof bootstrap !== 'undefined') {
-      var addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
+      addRoomModal = new bootstrap.Modal(document.getElementById('addRoomModal'));
       document.getElementById('addRoomBtn').addEventListener('click', function() {
         document.getElementById('roomInput').value = '';
         addRoomModal.show();
@@ -456,7 +417,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
           showMessage('房间 ' + roomId + ' 已添加', 'info');
           await renderRooms();
         } catch (e) {
-          showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+          showMessage('添加失败: ' + errMsg, 'error');
         }
         this.disabled = false;
         this.textContent = '完成';
@@ -477,7 +439,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
           showMessage('房间 ' + roomId + ' 已删除', 'info');
           await renderRooms();
         } catch (e) {
-          showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
+          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+          showMessage('删除失败: ' + errMsg, 'error');
           btn.disabled = false;
           btn.innerHTML = '删除';
         }
@@ -513,7 +476,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
         var res = await axios.post('/api/send-live-notify');
         showMessage(res.data.message || '发送成功', 'info');
       } catch (e) {
-        showMessage('发送失败: ' + (e.response?.data?.error || e.message), 'error');
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('发送失败: ' + errMsg, 'error');
       }
       this.disabled = false;
       this.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
@@ -619,7 +583,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
         form.reset();
         updateNotifyForm();
       } catch (e) {
-        showMessage('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('添加失败: ' + errMsg, 'error');
       }
     });
 
@@ -633,7 +598,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
           var res = await axios.post('/api/notify-configs/test', { id: id });
           showMessage(res.data.message || '测试成功', 'info');
         } catch (e) {
-          showMessage('测试失败: ' + (e.response?.data?.error || e.message), 'error');
+          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+          showMessage('测试失败: ' + errMsg, 'error');
         }
         btn.disabled = false;
         btn.textContent = '测试';
@@ -649,7 +615,8 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
           showMessage('切换成功', 'info');
           await renderConfigs();
         } catch (e) {
-          showMessage('切换失败: ' + (e.response?.data?.error || e.message), 'error');
+          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+          showMessage('切换失败: ' + errMsg, 'error');
           toggleBtn.disabled = false;
           toggleBtn.textContent = '切换';
         }
@@ -664,13 +631,14 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
           showMessage('删除成功', 'info');
           await renderConfigs();
         } catch (e) {
-          showMessage('删除失败: ' + (e.response?.data?.error || e.message), 'error');
+          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+          showMessage('删除失败: ' + errMsg, 'error');
         }
       }
     });
   }
 
-  window.addEventListener('DOMContentLoaded', function() {
+  function init() {
     console.log('[CTN] 页面初始化');
     var loginForm = document.getElementById('loginForm');
     if (!loginForm) {
@@ -720,7 +688,13 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
         showLoginPanel();
       }
     })();
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
   window.onerror = function(msg, url, line, col, error) {
     console.error('[GLOBAL]', msg, url, line, col, error);
@@ -756,7 +730,6 @@ export default {
         cookie += (cookie ? '; ' : '') + 'ctn32=ctn32';
       }
       headers.set('Cookie', cookie);
-      headers.set('X-CTN-Cookie', 'ctn32=ctn32');
 
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
         ? undefined
@@ -772,27 +745,9 @@ export default {
       );
 
       const newHeaders = new Headers(response.headers);
-      if (typeof response.headers.getSetCookie === 'function') {
-        const cookies = response.headers.getSetCookie();
-        if (cookies && cookies.length) {
-          newHeaders.delete('Set-Cookie');
-          for (const cookie of cookies) {
-            let fixed = cookie.replace(/SameSite=Lax/gi, 'SameSite=None');
-            if (!fixed.match(/;\s*Secure/gi)) {
-              fixed += '; Secure';
-            }
-            newHeaders.append('Set-Cookie', fixed);
-          }
-        }
-      } else {
-        if (response.headers.get('set-cookie')) {
-          let cookie = response.headers.get('set-cookie');
-          let fixed = cookie.replace(/SameSite=Lax/gi, 'SameSite=None');
-          if (!fixed.match(/;\s*Secure/gi)) {
-            fixed += '; Secure';
-          }
-          newHeaders.set('Set-Cookie', fixed);
-        }
+      const setCookie = response.headers.get('set-cookie');
+      if (setCookie) {
+        newHeaders.set('Set-Cookie', setCookie);
       }
 
       return new Response(response.body, {
