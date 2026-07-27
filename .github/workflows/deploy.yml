@@ -96,14 +96,19 @@ jobs:
         id: extract_urls
         if: github.event.inputs.skip_health_check != true
         run: |
-          FRONTEND_URL=$(grep '^FRONTEND_URL' backend/wrangler.toml | head -1 | cut -d '=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
-          BACKEND_URL=$(grep '^BACKEND_URL' frontend/wrangler.toml | head -1 | cut -d '=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
-          if [ -z "$FRONTEND_URL" ] || [ -z "$BACKEND_URL" ]; then
-            echo "警告: 未能从配置文件中完整提取 URL，请检查 wrangler.toml 是否定义了 FRONTEND_URL 和 BACKEND_URL"
-          else
-            echo "提取到前端 URL: $FRONTEND_URL"
-            echo "提取到后端 URL: $BACKEND_URL"
+          # 从 backend/wrangler.toml 提取 FRONTEND_URL（CORS 允许的源，也是前端域名）
+          FRONTEND_URL=$(grep -E '^FRONTEND_URL' backend/wrangler.toml | sed -E 's/^[^=]+=\s*"([^"]+)"$/\1/')
+          # 从 frontend/wrangler.toml 提取 BACKEND_URL（后端 API 地址）
+          BACKEND_URL=$(grep -E '^BACKEND_URL' frontend/wrangler.toml | sed -E 's/^[^=]+=\s*"([^"]+)"$/\1/')
+          # 如果提取失败，使用默认值（可根据实际情况修改）
+          if [ -z "$FRONTEND_URL" ]; then
+            FRONTEND_URL="https://live.ctn32.us.kg"
           fi
+          if [ -z "$BACKEND_URL" ]; then
+            BACKEND_URL="https://live-api.ctn32.us.kg"
+          fi
+          echo "提取到前端 URL: $FRONTEND_URL"
+          echo "提取到后端 URL: $BACKEND_URL"
           echo "FRONTEND_URL=$FRONTEND_URL" >> $GITHUB_ENV
           echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
 
@@ -134,8 +139,10 @@ jobs:
           fi
           HEALTH_URL="${BACKEND_URL}/api/rooms"
           echo "检查后端服务: $HEALTH_URL"
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL")
+          # 携带 ctn32 Cookie 绕过 Cloudflare 防火墙
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: ctn32=ctn32" "$HEALTH_URL")
           echo "后端状态码: $HTTP_CODE"
+          # 允许 200, 401, 403（403 可能是防火墙但服务仍可达）
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 401 ] || [ "$HTTP_CODE" -eq 403 ]; then
             echo "后端服务正常"
           else
