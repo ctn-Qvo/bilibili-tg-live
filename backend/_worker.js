@@ -296,6 +296,17 @@ function isAuthenticated(request, env) {
   } catch { return false; }
 }
 
+// 固定 CORS 头
+function corsHeaders(env) {
+  return {
+    'Access-Control-Allow-Origin': 'https://live.ctn32.us.kg',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin'
+  };
+}
+
 function jsonResponse(data, status = 200, env) {
   return new Response(JSON.stringify(data), {
     status: status,
@@ -304,16 +315,6 @@ function jsonResponse(data, status = 200, env) {
       ...corsHeaders(env)
     }
   });
-}
-
-function corsHeaders(env) {
-  return {
-    'Access-Control-Allow-Origin': env.FRONTEND_URL || 'https://live.ctn32.us.kg',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CTN-Cookie',
-    'Access-Control-Allow-Credentials': 'true',
-    'Vary': 'Origin'
-  };
 }
 
 async function handleRequest(request, env) {
@@ -330,13 +331,18 @@ async function handleRequest(request, env) {
     }
 
     if (path === '/api/login' && method === 'POST') {
+      // 验证是否携带 ctn32（防止直接调用）
+      const cookie = request.headers.get('Cookie') || '';
+      if (!cookie.includes('ctn32=ctn32')) {
+        return jsonResponse({ error: '非法访问' }, 403, env);
+      }
+
       let body; try { body = await request.json(); } catch { body = {}; }
       const { username, password } = body;
       if (username === env.ADMIN_USER && password === env.ADMIN_PASSWORD) {
         const auth = btoa(username + ':' + password);
         const headers = {
           ...corsHeaders(env),
-          // 删除 Domain，确保 Cookie 可跨子域发送
           'Set-Cookie': 'auth=' + auth + '; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=None',
           'Content-Type': 'application/json'
         };
@@ -495,13 +501,7 @@ async function handleRequest(request, env) {
       return jsonResponse(error, 200, env);
     }
 
-    // SPA fallback: 非 API 请求返回 HTML
-    if (method === 'GET') {
-      // 这里应该返回前端 HTML，但当前 Worker 是纯 API 服务，不托管 HTML。
-      // 实际 HTML 由前端 Worker 提供，所以这里仍然返回 404。
-      return jsonResponse({ error: 'Not Found' }, 404, env);
-    }
-
+    // 非 API 请求（但后端 Worker 不托管 HTML，直接 404）
     return jsonResponse({ error: 'Not Found' }, 404, env);
   } catch (e) {
     console.error('Unhandled error:', e);
