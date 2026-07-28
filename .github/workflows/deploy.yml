@@ -118,13 +118,23 @@ jobs:
             exit 0
           fi
           echo "检查前端服务: $FRONTEND_URL"
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: ctn32=ctn32" "$FRONTEND_URL")
+          curl -v \
+            -H "Cookie: ctn32=ctn32" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            "$FRONTEND_URL" > /tmp/frontend_response.txt 2>&1
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Cookie: ctn32=ctn32" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            "$FRONTEND_URL")
           echo "前端状态码: $HTTP_CODE"
-          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 403 ] || [ "$HTTP_CODE" -eq 401 ]; then
-            echo "前端服务正常"
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "401" ]; then
+            echo "前端服务响应（允许 403/401 常见）"
           else
-            echo "前端服务异常 (HTTP $HTTP_CODE)，请手动验证"
+            echo "前端状态码异常，请手动检查"
           fi
+          echo "响应内容（前200字符）:"
+          head -c 200 /tmp/frontend_response.txt || true
+          echo ""
 
       - name: 健康检查 - 后端
         if: github.event.inputs.skip_health_check != true
@@ -136,13 +146,23 @@ jobs:
           fi
           HEALTH_URL="${BACKEND_URL}/api/health"
           echo "检查后端服务: $HEALTH_URL"
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Cookie: ctn32=ctn32" "$HEALTH_URL")
+          curl -v \
+            -H "Cookie: ctn32=ctn32" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            "$HEALTH_URL" > /tmp/backend_response.txt 2>&1
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Cookie: ctn32=ctn32" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            "$HEALTH_URL")
           echo "后端状态码: $HTTP_CODE"
-          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 403 ]; then
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "后端服务正常"
           else
-            echo "后端服务异常 (HTTP $HTTP_CODE)，请手动验证"
+            echo "后端返回 HTTP $HTTP_CODE（可能因 WAF 或 Worker 逻辑，但已添加 UA 和 Cookie，请查看响应内容）"
           fi
+          echo "响应内容（前200字符）:"
+          head -c 200 /tmp/backend_response.txt || true
+          echo ""
 
       - name: 上传日志
         if: always()
