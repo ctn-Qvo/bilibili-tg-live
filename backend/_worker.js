@@ -1,21 +1,15 @@
-// ==================== 配置 ====================
 const CONFIG = {
-  // UAPI 直播状态接口
-  MAIN_API: 'https://uapis.cn/api/v1/social/bilibili/liveroom',
-  // UAPI 用户信息接口
-  USER_API: 'https://uapis.cn/api/v1/social/bilibili/userinfo',
-  // B站官方接口（备用）
-  BILI_API: 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id=',
+  UAPI_DIRECT: 'https://uapis.cn/api/v1/social/bilibili/liveroom?room_id=',
+  USER_API_DIRECT: 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=',
+  BILI_DIRECT: 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id=',
   IS_LIVE_STATUS: [1],
-  USER_INFO_TTL: 86400,      // 用户信息缓存1天
-  CACHE_TTL: 30,             // 直播状态缓存30秒
-  MAX_LOG_ENTRIES: 200,
+  USER_INFO_TTL: 86400,
+  CACHE_TTL: 30,
   MAX_LEVEL: 6,
   POPULARITY_MILESTONES: [1000, 5000, 10000, 50000, 100000, 500000, 1000000],
   DEFAULT_TEMPLATE: `[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}`
 };
 
-// ==================== 代理池配置（通用反向代理） ====================
 const PROXY_CHAIN = [
   {
     name: 'cfspider',
@@ -23,18 +17,24 @@ const PROXY_CHAIN = [
   },
   {
     name: 'vercel',
-    build: (targetUrl) => 'http://vercel-proxy.ctn32.us.kg/' + targetUrl   // 注意：http
+    build: (targetUrl) => {
+      const withoutProtocol = targetUrl.replace(/^https?:\/\//, '');
+      return 'https://vercel-proxy.ctn32.us.kg/https/' + withoutProtocol;
+    }
   }
 ];
 
-// ==================== 工具函数 ====================
 function toRoomId(id) { return String(id).trim(); }
 function buildCacheKey(...parts) { return parts.join(':'); }
 function normalizeCover(url) { if (!url) return ''; return url.split('?')[0].trim(); }
 function formatLevel(level) { const lv = parseInt(level || 0) || 1; return 'LV ' + Math.min(lv, CONFIG.MAX_LEVEL); }
 function renderTemplate(template, vars) { if (!template) template = CONFIG.DEFAULT_TEMPLATE; return template.replace(/\{\{(.*?)\}\}/g, (_, key) => { const val = vars[key.trim()]; return val !== undefined && val !== null ? String(val) : ''; }); }
 
-// ==================== 缓存 ====================
+function hasBypassCookie(request) {
+  const cookie = request.headers.get('Cookie') || '';
+  return cookie.split(';').map(c => c.trim()).includes('ctn32=ctn32');
+}
+
 async function getCache(key) {
   const cache = caches.default;
   const req = new Request('https://cache/' + key);
@@ -51,24 +51,50 @@ async function setCache(key, data, ttl) {
   await cache.put(new Request('https://cache/' + key), resp);
 }
 
-// ==================== 日志系统（中文化，减少数据库写入） ====================
 async function systemLog(env, level, message, data = {}) {
   const time = new Date().toISOString();
   const text = Object.keys(data).length ? message + ' ' + JSON.stringify(data) : message;
   console.log(`[${level.toUpperCase()}] ${text}`);
-  // 只对 error / warn / notify / user 写入数据库
-  if (['error', 'warn', 'notify', 'user'].includes(level)) {
+  try {
     await env.DB.prepare(
       'INSERT INTO system_logs (time, level, message) VALUES (?, ?, ?)'
     ).bind(time, level, text).run();
-    // 限制日志条目数量
-    await env.DB.prepare(
-      `DELETE FROM system_logs WHERE id NOT IN (SELECT id FROM system_logs ORDER BY time DESC LIMIT ?)`
-    ).bind(CONFIG.MAX_LOG_ENTRIES).run();
+  } catch (e) {
+    console.error('日志写入数据库失败:', e);
   }
 }
 
-// ==================== 统一代理请求函数（通用） ====================
+async function cleanOldLogs(env) {
+  try {
+    await env.DB.prepare(
+      `DELETE FROM system_logs WHERE time < datetime('now', '-30 day')`
+    ).run();
+    await systemLog(env, 'system', '清理30天前日志完成');
+  } catch (e) {
+    console.error('清理旧日志失败:', e);
+  }
+}
+
+async function fetchDirect(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 Chrome/120 Safari/537.36',
+        'Accept': 'application/json,text/plain,*/*'
+      }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const RETRY_STATUS = [401, 402, 403, 408, 429, 500, 502, 503, 520, 522, 523, 524];
+
 async function fetchThroughProxy(targetUrl, env) {
   let lastError = null;
   for (const proxy of PROXY_CHAIN) {
@@ -76,14 +102,12 @@ async function fetchThroughProxy(targetUrl, env) {
       const proxyUrl = proxy.build(targetUrl);
       const resp = await fetch(proxyUrl, {
         headers: {
-          'Cookie': 'ctn32=ctn32',
           'User-Agent': 'Mozilla/5.0 Chrome/120 Safari/537.36',
           'Accept': 'application/json,text/plain,*/*'
         }
       });
-      // 如果返回 402 或 403，视为拒绝访问，切换下一个代理
-      if (resp.status === 402 || resp.status === 403) {
-        await systemLog(env, 'warn', `${proxy.name} 访问被拒绝，切换代理`, { status: resp.status, target: targetUrl });
+      if (RETRY_STATUS.includes(resp.status)) {
+        await systemLog(env, 'warn', `${proxy.name} 请求失败，切换代理`, { status: resp.status, target: targetUrl });
         continue;
       }
       if (!resp.ok) {
@@ -93,17 +117,24 @@ async function fetchThroughProxy(targetUrl, env) {
       await systemLog(env, 'system', `${proxy.name} 代理成功`, { target: targetUrl });
       return data;
     } catch (e) {
-      await systemLog(env, 'warn', `${proxy.name} 代理失败`, { target: targetUrl, error: e.message });
+      await systemLog(env, 'warn', `${proxy.name} 代理异常`, { error: e.message });
       lastError = e;
     }
   }
-  // 所有代理均失败
-  throw new Error('所有代理均失败，最后错误: ' + (lastError ? lastError.message : '未知'));
+  throw new Error('代理链全部失败: ' + (lastError?.message || 'unknown'));
 }
 
-// ==================== 数据格式统一（兼容 UAPI 和 B站官方） ====================
+function buildUapiRoom(roomId) {
+  return CONFIG.UAPI_DIRECT + encodeURIComponent(toRoomId(roomId));
+}
+function buildUserApi(uid) {
+  return CONFIG.USER_API_DIRECT + encodeURIComponent(String(uid));
+}
+function buildBiliRoom(roomId) {
+  return CONFIG.BILI_DIRECT + encodeURIComponent(toRoomId(roomId));
+}
+
 function normalizeRoomData(data, roomId) {
-  // 兼容两种数据源
   return {
     room_id: data.room_id || roomId,
     uid: data.uid || '',
@@ -113,86 +144,151 @@ function normalizeRoomData(data, roomId) {
     area_name: data.area_name || '',
     parent_area_name: data.parent_area_name || '',
     user_cover: data.user_cover || '',
-    live_time: data.live_time || ''   // 可能是时间戳或字符串，保持原样
+    live_time: data.live_time || ''
   };
 }
 
-// ==================== 获取直播状态（UAPI 优先，B站官方备用，均通过代理池） ====================
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   const cacheKey = 'live:' + roomId;
-
-  // 尝试读取缓存（30秒）
   const cached = await getCache(cacheKey);
   if (cached) {
+    await systemLog(env, 'system', '直播状态缓存命中', { room: roomId });
     return cached;
   }
-
   let result = null;
-  let data = null;
-
-  // 第一优先级：UAPI（通过代理池）
-  const uapiTarget = CONFIG.MAIN_API + '?room_id=' + encodeURIComponent(roomId);
+  const uapiTarget = buildUapiRoom(roomId);
   try {
-    data = await fetchThroughProxy(uapiTarget, env);
+    const data = await fetchDirect(uapiTarget);
     if (data && data.room_id) {
       result = normalizeRoomData(data, roomId);
-      await systemLog(env, 'system', 'UAPI 获取成功', { room: roomId });
+      await systemLog(env, 'system', 'UAPI 直连成功', { room: roomId });
+    } else {
+      await systemLog(env, 'warn', 'UAPI 直连数据无效', { room: roomId });
     }
   } catch (e) {
-    await systemLog(env, 'warn', 'UAPI 所有代理均失败，降级到 B站官方接口', { room: roomId, error: e.message });
+    await systemLog(env, 'warn', 'UAPI 直连失败', { room: roomId, error: e.message });
   }
-
-  // 如果 UAPI 失败，尝试 B站官方接口（也通过代理池）
   if (!result) {
-    const biliTarget = CONFIG.BILI_API + encodeURIComponent(roomId);
     try {
-      data = await fetchThroughProxy(biliTarget, env);
-      // 官方接口返回格式：{ code:0, data:{...} }
-      if (data && data.code === 0 && data.data) {
-        // 官方接口的 data 字段包含房间信息
-        result = normalizeRoomData(data.data, roomId);
-        await systemLog(env, 'system', 'B站官方接口获取成功', { room: roomId });
+      const data = await fetchThroughProxy(uapiTarget, env);
+      if (data && data.room_id) {
+        result = normalizeRoomData(data, roomId);
+        await systemLog(env, 'system', 'UAPI cfspider 成功', { room: roomId });
       } else {
-        throw new Error('B站API返回错误: ' + (data ? data.message : '未知'));
+        await systemLog(env, 'warn', 'UAPI cfspider 数据无效', { room: roomId });
       }
     } catch (e) {
-      await systemLog(env, 'error', 'B站官方接口所有代理均失败', { room: roomId, error: e.message });
+      await systemLog(env, 'warn', 'UAPI cfspider 失败', { room: roomId, error: e.message });
     }
   }
-
+  if (!result) {
+    try {
+      const data = await fetchThroughProxy(uapiTarget, env);
+      if (data && data.room_id) {
+        result = normalizeRoomData(data, roomId);
+        await systemLog(env, 'system', 'UAPI vercel 成功', { room: roomId });
+      } else {
+        await systemLog(env, 'warn', 'UAPI vercel 数据无效', { room: roomId });
+      }
+    } catch (e) {
+      await systemLog(env, 'warn', 'UAPI vercel 失败', { room: roomId, error: e.message });
+    }
+  }
+  if (!result) {
+    const biliTarget = buildBiliRoom(roomId);
+    try {
+      const data = await fetchThroughProxy(biliTarget, env);
+      if (data && data.code === 0 && data.data) {
+        result = normalizeRoomData(data.data, roomId);
+        await systemLog(env, 'system', 'B站 cfspider 成功', { room: roomId });
+      } else {
+        const msg = data && data.message ? data.message : '返回数据异常';
+        await systemLog(env, 'warn', 'B站 cfspider 失败', { room: roomId, reason: msg });
+      }
+    } catch (e) {
+      await systemLog(env, 'warn', 'B站 cfspider 异常', { room: roomId, error: e.message });
+    }
+  }
+  if (!result) {
+    const biliTarget = buildBiliRoom(roomId);
+    try {
+      const data = await fetchThroughProxy(biliTarget, env);
+      if (data && data.code === 0 && data.data) {
+        result = normalizeRoomData(data.data, roomId);
+        await systemLog(env, 'system', 'B站 vercel 成功', { room: roomId });
+      } else {
+        const msg = data && data.message ? data.message : '返回数据异常';
+        await systemLog(env, 'warn', 'B站 vercel 失败', { room: roomId, reason: msg });
+      }
+    } catch (e) {
+      await systemLog(env, 'warn', 'B站 vercel 异常', { room: roomId, error: e.message });
+    }
+  }
+  if (!result) {
+    const biliTarget = buildBiliRoom(roomId);
+    try {
+      const data = await fetchDirect(biliTarget);
+      if (data && data.code === 0 && data.data) {
+        result = normalizeRoomData(data.data, roomId);
+        await systemLog(env, 'system', 'B站 直连成功', { room: roomId });
+      } else {
+        const msg = data && data.message ? data.message : '返回数据异常';
+        await systemLog(env, 'warn', 'B站 直连失败', { room: roomId, reason: msg });
+      }
+    } catch (e) {
+      await systemLog(env, 'warn', 'B站 直连异常', { room: roomId, error: e.message });
+    }
+  }
   if (result) {
     await setCache(cacheKey, result, CONFIG.CACHE_TTL);
     return result;
   }
-
   await systemLog(env, 'error', '所有直播接口均失败', { room: roomId });
   return null;
 }
 
-// ==================== 用户信息（通过代理池获取 UAPI） ====================
 async function fetchUserInfo(uid, env) {
   if (!uid) return null;
   const cacheKey = buildCacheKey('userinfo', uid);
   const cached = await getCache(cacheKey);
-  if (cached) return cached;
-
-  const targetUrl = CONFIG.USER_API + '?uid=' + encodeURIComponent(uid);
+  if (cached) {
+    await systemLog(env, 'system', '用户信息缓存命中', { uid });
+    return cached;
+  }
+  let result = null;
+  const target = buildUserApi(uid);
   try {
-    const data = await fetchThroughProxy(targetUrl, env);
+    const data = await fetchDirect(target);
     if (data && data.mid) {
-      await setCache(cacheKey, data, CONFIG.USER_INFO_TTL);
-      return data;
+      result = data;
+      await systemLog(env, 'system', '用户信息直连成功', { uid });
     } else {
-      throw new Error('用户信息返回缺少mid');
+      await systemLog(env, 'warn', '用户信息直连数据无效', { uid });
     }
   } catch (e) {
-    // 若代理失败且缓存存在则返回缓存（但已提前检查）
-    throw e;
+    await systemLog(env, 'warn', '用户信息直连失败', { uid, error: e.message });
   }
+  if (!result) {
+    try {
+      const data = await fetchThroughProxy(target, env);
+      if (data && data.mid) {
+        result = data;
+        await systemLog(env, 'system', '用户信息代理成功', { uid });
+      } else {
+        await systemLog(env, 'warn', '用户信息代理数据无效', { uid });
+      }
+    } catch (e) {
+      await systemLog(env, 'error', '用户信息代理失败', { uid, error: e.message });
+    }
+  }
+  if (result) {
+    await setCache(cacheKey, result, CONFIG.USER_INFO_TTL);
+    return result;
+  }
+  return null;
 }
 
-// ==================== 通知发送（不变） ====================
 async function sendNotificationToConfig(config, text, extra) {
   extra = extra || {};
   try {
@@ -220,6 +316,7 @@ async function sendNotificationToConfig(config, text, extra) {
     return { success: false, error: e.message };
   }
 }
+
 async function sendNotification(text, env, extra) {
   extra = extra || {};
   const configs = await getNotifyConfigs(env);
@@ -236,7 +333,6 @@ async function sendNotification(text, env, extra) {
   return success;
 }
 
-// ==================== 通知内容构建（使用用户信息） ====================
 async function buildNotification(roomId, current, env, eventType, extra) {
   extra = extra || {};
   let userInfo = null;
@@ -248,11 +344,9 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   const anchorName = (userInfo && userInfo.name) ? userInfo.name : '房间 ' + roomId;
   const now = new Date();
   const shanghaiNow = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-
   if (eventType === 'live_end') {
     let duration = '';
     if (current.live_time) {
-      // 兼容两种格式：时间戳或字符串 "YYYY-MM-DD HH:mm:ss"
       let startTime;
       if (typeof current.live_time === 'string' && current.live_time.includes('-')) {
         startTime = new Date(current.live_time.replace(/-/g, '/') + ' UTC+8');
@@ -273,7 +367,6 @@ async function buildNotification(roomId, current, env, eventType, extra) {
     if (duration) message += `\n直播时长：${duration}`;
     return message;
   }
-
   const vipTypeMap = { 0: '无', 1: '月度大会员', 2: '年度大会员' };
   const vipType = (userInfo && userInfo.vip_type !== undefined) ? vipTypeMap[userInfo.vip_type] || userInfo.vip_type : '';
   const vipStatus = (userInfo && userInfo.vip_status !== undefined) ? (userInfo.vip_status === 1 ? '已开通' : '未开通') : '';
@@ -311,7 +404,6 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   return renderTemplate(template, baseVars);
 }
 
-// ==================== 数据库操作（仅保留必要的写操作） ====================
 async function getRoomList(env) {
   const { results } = await env.DB.prepare('SELECT room_id FROM rooms').all();
   return results.map(row => row.room_id);
@@ -377,7 +469,7 @@ async function toggleNotifyConfig(env, id) {
 }
 
 async function getLogs(env) {
-  const { results } = await env.DB.prepare('SELECT time, level, message FROM system_logs ORDER BY time DESC LIMIT ?').bind(CONFIG.MAX_LOG_ENTRIES).all();
+  const { results } = await env.DB.prepare('SELECT time, level, message FROM system_logs ORDER BY time DESC LIMIT 200').all();
   return results;
 }
 async function clearLogs(env) {
@@ -385,7 +477,6 @@ async function clearLogs(env) {
   await systemLog(env, 'user', '日志已清除');
 }
 
-// ==================== 客户端错误收集 ====================
 async function getClientErrors(env, limit = 50) {
   const { results } = await env.DB.prepare('SELECT id, timestamp, message, url, user_agent, context FROM client_errors ORDER BY timestamp DESC LIMIT ?').bind(limit).all();
   return results;
@@ -404,7 +495,6 @@ async function addClientError(env, data) {
   return id;
 }
 
-// ==================== 监控核心逻辑 ====================
 async function processRoom(roomId, env, options) {
   options = options || {};
   roomId = toRoomId(roomId);
@@ -427,12 +517,10 @@ async function processRoom(roomId, env, options) {
     await systemLog(env, 'error', '获取新状态失败', { room: roomId, error: e.message });
     return { error: e.message };
   }
-
   const isLive = CONFIG.IS_LIVE_STATUS.includes(current.live_status);
   const state = isLive ? 'LIVE' : 'OFFLINE';
   const oldState = prev.state || 'OFFLINE';
   const events = [];
-
   if (oldState !== state) {
     await systemLog(env, 'notify', '状态变化', { room: roomId, from: oldState, to: state });
     if (state === 'LIVE') events.push({ type: 'live_start', data: current });
@@ -450,7 +538,6 @@ async function processRoom(roomId, env, options) {
       if (prevOnline < milestone && current.online >= milestone) events.push({ type: 'popularity_milestone', data: current, milestone: milestone });
     }
   }
-
   const changed = (prev.state !== state) || (prev.last_title !== (current.title || '')) || (normalizeCover(prev.last_cover) !== normalizeCover(current.user_cover)) || (prev.last_area !== (current.area_name || '')) || (prev.last_parent_area !== (current.parent_area_name || '')) || (prev.last_online !== Number(current.online || 0));
   if (changed) {
     const shanghaiTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
@@ -463,7 +550,6 @@ async function processRoom(roomId, env, options) {
     };
     await setMonitorState(env, roomId, newState);
   }
-
   for (const evt of events) {
     const text = await buildNotification(roomId, evt.data, env, evt.type, evt);
     const success = await sendNotification(text, env, { event: evt.type, room_id: roomId, ...evt.data });
@@ -499,7 +585,6 @@ async function monitorAll(env, options) {
   return results;
 }
 
-// ==================== 认证与路由 ====================
 function isAuthenticated(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const authCookie = cookie.split(';').find(c => c.trim().startsWith('auth='));
@@ -539,24 +624,19 @@ function jsonResponse(data, status = 200, request, env) {
   });
 }
 
-// ==================== 请求处理 ====================
 async function handleRequest(request, env) {
   try {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
-
     if (method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders(request, env) });
     }
-
     if (path === '/api/health' && method === 'GET') {
       return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, request, env);
     }
-
     if (path === '/api/login' && method === 'POST') {
-      const cookie = request.headers.get('Cookie') || '';
-      if (!cookie.includes('ctn32=ctn32')) {
+      if (!hasBypassCookie(request)) {
         return jsonResponse({ error: '非法访问' }, 403, request, env);
       }
       let body; try { body = await request.json(); } catch { body = {}; }
@@ -571,7 +651,6 @@ async function handleRequest(request, env) {
         return new Response(JSON.stringify({ success: true }), { headers });
       } else return jsonResponse({ success: false, error: '用户名或密码错误' }, 401, request, env);
     }
-
     if (path === '/api/logout' && method === 'POST') {
       const headers = {
         ...corsHeaders(request, env),
@@ -580,15 +659,13 @@ async function handleRequest(request, env) {
       };
       return new Response(JSON.stringify({ success: true }), { headers });
     }
-
     if (path === '/api/me' && method === 'GET') {
       if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, request, env);
       return jsonResponse({ username: env.ADMIN_USER }, 200, request, env);
     }
-
-    if (!isAuthenticated(request, env)) return jsonResponse({ error: '未认证' }, 401, request, env);
-
-    // 房间管理
+    if (!hasBypassCookie(request)) {
+      return jsonResponse({ error: '非法访问' }, 403, request, env);
+    }
     if (path === '/api/rooms' && method === 'GET') {
       const rooms = await getRoomList(env);
       const states = {};
@@ -612,8 +689,6 @@ async function handleRequest(request, env) {
       await removeRoom(env, roomId);
       return jsonResponse({ success: true }, 200, request, env);
     }
-
-    // 日志
     if (path === '/api/logs' && method === 'GET') {
       const logs = await getLogs(env);
       return jsonResponse(logs, 200, request, env);
@@ -622,8 +697,6 @@ async function handleRequest(request, env) {
       await clearLogs(env);
       return jsonResponse({ success: true }, 200, request, env);
     }
-
-    // 通知配置
     if (path === '/api/notify-configs' && method === 'GET') {
       const configs = await getNotifyConfigs(env);
       return jsonResponse(configs, 200, request, env);
@@ -686,7 +759,6 @@ async function handleRequest(request, env) {
         }
       } catch (e) { return jsonResponse({ error: e.message }, 500, request, env); }
     }
-
     if (path === '/api/monitor' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const force = body.force === true;
@@ -694,7 +766,6 @@ async function handleRequest(request, env) {
       const result = await monitorAll(env, { force: force });
       return jsonResponse(result, 200, request, env);
     }
-
     if (path === '/api/send-live-notify' && method === 'POST') {
       const roomIds = await getRoomList(env);
       if (!roomIds.length) return jsonResponse({ error: '房间列表为空' }, 400, request, env);
@@ -725,8 +796,6 @@ async function handleRequest(request, env) {
         }
       } catch (e) { return jsonResponse({ error: e.message }, 500, request, env); }
     }
-
-    // 客户端错误
     if (path === '/api/client-errors' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
       const id = await addClientError(env, {
@@ -751,7 +820,6 @@ async function handleRequest(request, env) {
       if (!error) return jsonResponse({ error: '错误不存在' }, 404, request, env);
       return jsonResponse(error, 200, request, env);
     }
-
     return jsonResponse({ error: 'Not Found' }, 404, request, env);
   } catch (e) {
     console.error('Unhandled error:', e);
@@ -760,7 +828,6 @@ async function handleRequest(request, env) {
   }
 }
 
-// ==================== Worker 入口 ====================
 export default {
   async fetch(request, env) {
     try {
@@ -773,6 +840,7 @@ export default {
   async scheduled(event, env) {
     await systemLog(env, 'system', '定时任务启动');
     try {
+      await cleanOldLogs(env);
       const result = await monitorAll(env);
       await systemLog(env, 'system', '定时任务完成', { result: result.length || '成功' });
     } catch (e) {
