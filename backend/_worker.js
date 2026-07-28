@@ -150,17 +150,24 @@ async function logApiCall(type, url, reqHeaders, respStatus, duration, responseD
   await addLog(level, 'API_CALL: ' + JSON.stringify(logEntry), env);
 }
 
+// ========== 写死在代码中的代理配置 ==========
+const UAPI_DIRECT = CONFIG.MAIN_API;                                    // 直连
+const UAPI_PROXY = 'https://cfspider.ctn32.us.kg/api/fetch?url=';     // UAPI 代理
+const BILI_PROXY = 'https://vercel-proxy.ctn32.us.kg/https/api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&room_id='; // B站官方代理
+
+// 固定顺序尝试：直连UAPI → 代理UAPI → 代理B站官方
 async function fetchFromUAPI(roomId, env) {
-  const url = CONFIG.MAIN_API + '?room_id=' + encodeURIComponent(roomId);
   const headers = buildBrowserHeaders();
   if (env.UAPI_KEY) headers['Authorization'] = 'Bearer ' + env.UAPI_KEY;
-  const start = Date.now();
-  let resp, data;
+
+  // 尝试直连 UAPI
   try {
-    resp = await fetch(url, { headers });
+    const url = UAPI_DIRECT + '?room_id=' + encodeURIComponent(roomId);
+    const start = Date.now();
+    const resp = await fetch(url, { headers });
     const duration = Date.now() - start;
-    if (!resp.ok) throw new Error('UAPI失败 (' + resp.status + ')');
-    data = await resp.json();
+    if (!resp.ok) throw new Error('UAPI直连失败 (' + resp.status + ')');
+    const data = await resp.json();
     if (!data.room_id) throw new Error('UAPI返回缺少room_id');
     const result = {
       room_id: data.room_id || roomId,
@@ -173,18 +180,46 @@ async function fetchFromUAPI(roomId, env) {
       live_time: data.live_time ? String(data.live_time) : '',
       uid: data.uid || data.mid || ''
     };
-    await logApiCall('uapi', url, headers, resp.status, duration, result, null, env);
+    await logApiCall('uapi_direct', url, headers, resp.status, duration, result, null, env);
     return result;
   } catch (e) {
-    const duration = Date.now() - start;
-    const status = resp ? resp.status : 0;
-    await logApiCall('uapi', url, headers, status, duration, null, e, env);
-    throw e;
+    await addLog('warn', `[${roomId}] UAPI直连失败: ${e.message}，尝试代理`, env);
   }
+
+  // 尝试通过代理访问 UAPI
+  try {
+    const target = UAPI_DIRECT + '?room_id=' + encodeURIComponent(roomId);
+    const url = UAPI_PROXY + encodeURIComponent(target);
+    const start = Date.now();
+    const resp = await fetch(url, { headers });
+    const duration = Date.now() - start;
+    if (!resp.ok) throw new Error('UAPI代理失败 (' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.room_id) throw new Error('UAPI代理返回缺少room_id');
+    const result = {
+      room_id: data.room_id || roomId,
+      live_status: data.live_status ?? data.livestatus ?? data.liveStatus ?? 0,
+      title: data.title || '',
+      online: data.online || data.viewers || 0,
+      area_name: data.area_name || data.area || '',
+      parent_area_name: data.parent_area_name || data.parent_area || '',
+      user_cover: data.user_cover || data.cover || '',
+      live_time: data.live_time ? String(data.live_time) : '',
+      uid: data.uid || data.mid || ''
+    };
+    await logApiCall('uapi_proxy', url, headers, resp.status, duration, result, null, env);
+    return result;
+  } catch (e) {
+    await addLog('warn', `[${roomId}] UAPI代理失败: ${e.message}，降级B站官方`, env);
+  }
+
+  // 最后尝试 B站官方 API（通过固定代理）
+  return await fetchFromBilibiliOfficial(roomId, env);
 }
 
+// B站官方 API（通过固定代理）
 async function fetchFromBilibiliOfficial(roomId, env) {
-  const url = 'https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&room_id=' + encodeURIComponent(roomId);
+  const url = BILI_PROXY + encodeURIComponent(roomId);
   const headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.5127.247 Safari/537.36 Edg/109.0.5127.247',
     'Accept': '*/*',
@@ -204,17 +239,17 @@ async function fetchFromBilibiliOfficial(roomId, env) {
   try {
     resp = await fetch(url, { headers });
     const duration = Date.now() - start;
-    if (!resp.ok) throw new Error('官方失败 (' + resp.status + ')');
+    if (!resp.ok) throw new Error('B站官方API失败 (' + resp.status + ')');
     json = await resp.json();
-    if (json.code !== 0 || !json.data) throw new Error('官方返回错误: ' + (json.msg || json.message));
+    if (json.code !== 0 || !json.data) throw new Error('B站官方API返回错误: ' + (json.msg || json.message));
     const d = json.data;
     const result = {
       room_id: d.room_id || roomId,
       live_status: d.live_status ?? 0,
       title: d.title || '',
       online: d.online || 0,
-      area_name: '',
-      parent_area_name: '',
+      area_name: d.area_name || '',
+      parent_area_name: d.parent_area_name || '',
       user_cover: d.user_cover || '',
       live_time: d.live_time ? String(d.live_time) : '',
       uid: d.uid || ''
@@ -229,27 +264,18 @@ async function fetchFromBilibiliOfficial(roomId, env) {
   }
 }
 
+// 入口：直接调用 fetchFromUAPI（内部已包含完整降级链）
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   try {
-    const data = await fetchFromUAPI(roomId, env);
-    if (data) return data;
+    return await fetchFromUAPI(roomId, env);
   } catch (e) {
-    await addLog('warn', `[${roomId}] UAPI失败: ${e.message}，降级官方`, env);
+    await addLog('error', `[${roomId}] 所有接口均失败: ${e.message}`, env);
+    return null;
   }
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const data = await fetchFromBilibiliOfficial(roomId, env);
-      if (data) return data;
-    } catch (e) {
-      await addLog('warn', `[${roomId}] 官方接口第 ${attempt+1} 次失败: ${e.message}`, env);
-      if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-  await addLog('error', `[${roomId}] 所有接口失败，使用旧状态`, env);
-  return null;
 }
 
+// ========== 以下为原有代码（通知、监控、路由等），保持不变 ==========
 async function fetchUserInfo(uid) {
   if (!uid) return null;
   const cacheKey = buildCacheKey('userinfo', uid);
