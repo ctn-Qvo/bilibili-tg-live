@@ -503,9 +503,9 @@ window.initPage = async function() {
 };
 `);
 
-// ========== 通知配置页面 ==========
+// ========== 通知配置页面（仅 Telegram + Server酱） ==========
 const NOTIFY_PAGE = dashboardTemplate(`
-<div class="card mb-3"><div class="card-header"><i class="bi bi-plus-circle"></i> 添加通知配置</div><div class="card-body"><form id="addNotifyForm" class="row g-3"><div class="col-md-4"><label class="form-label">名称</label><input type="text" name="name" class="form-control" placeholder="" required></div><div class="col-md-4"><label class="form-label">协议</label><select name="protocol" id="protocolSelect" class="form-select"><option value="telegram">Telegram</option><option value="onebot_private">OneBot 私聊</option><option value="onebot_group">OneBot 群聊</option><option value="discord">Discord Webhook</option><option value="custom_webhook">自定义 Webhook</option></select></div><input type="hidden" id="apiUrl" name="api_url"><div class="col-md-6" id="tgTokenGroup"><label class="form-label">Bot Token</label><input type="text" id="tgToken" name="tg_token" class="form-control" placeholder=""><small class="text-muted">自动构建 API 地址</small></div><div class="col-md-6"><label class="form-label" id="receiverLabel">接收者 ID</label><input type="text" name="chat_id" id="chatId" class="form-control" placeholder=""></div><div class="col-12"><label class="form-label">通知模板 (可选)</label><textarea name="template" id="templateArea" class="form-control" rows="6">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea></div><div class="col-12"><button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> 添加配置</button></div></form></div></div>
+<div class="card mb-3"><div class="card-header"><i class="bi bi-plus-circle"></i> 添加通知配置</div><div class="card-body"><form id="addNotifyForm" class="row g-3"><div class="col-md-4"><label class="form-label">名称</label><input type="text" name="name" class="form-control" placeholder="配置名称" required></div><div class="col-md-4"><label class="form-label">协议</label><select name="protocol" id="protocolSelect" class="form-select"><option value="telegram">Telegram</option><option value="serverchan">Server酱</option></select></div><div class="col-md-4"><label class="form-label">令牌</label><input type="text" id="tokenInput" class="form-control" placeholder="Bot Token 或 SendKey" required><small id="tokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small></div><input type="hidden" id="apiUrl" name="api_url"><div class="col-md-6"><label class="form-label" id="receiverLabel">接收者 ID / 标题</label><input type="text" name="chat_id" id="chatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）"><small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small></div><div class="col-12"><label class="form-label">通知模板 (可选)</label><textarea name="template" id="templateArea" class="form-control" rows="6">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea></div><div class="col-12"><button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> 添加配置</button></div></form></div></div>
 <div class="card"><div class="card-header"><i class="bi bi-list-ul"></i> 现有配置</div><div class="card-body"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>名称</th><th>协议</th><th>状态</th><th>操作</th></tr></thead><tbody id="configTableBody"></tbody></table></div></div></div>
 `, 'notify', `
 async function renderConfigs() {
@@ -520,7 +520,7 @@ async function renderConfigs() {
     var html = '';
     for (var i = 0; i < configs.length; i++) {
       var cfg = configs[i];
-      var protocolLabel = { telegram: 'Telegram', onebot_private: 'OneBot私聊', onebot_group: 'OneBot群聊', discord: 'Discord', custom_webhook: '自定义Webhook' }[cfg.protocol] || cfg.protocol;
+      var protocolLabel = { telegram: 'Telegram', serverchan: 'Server酱' }[cfg.protocol] || cfg.protocol;
       var status = cfg.enabled ? '启用' : '禁用';
       var statusColor = cfg.enabled ? 'success' : 'secondary';
       html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
@@ -533,25 +533,23 @@ async function renderConfigs() {
 
 function updateNotifyForm() {
   var val = document.getElementById('protocolSelect').value;
-  var tgTokenGroup = document.getElementById('tgTokenGroup');
+  var tokenInput = document.getElementById('tokenInput');
+  var tokenHelp = document.getElementById('tokenHelp');
   var receiverLabel = document.getElementById('receiverLabel');
   var chatId = document.getElementById('chatId');
+  var chatHelp = document.getElementById('chatHelp');
   if (val === 'telegram') {
-    tgTokenGroup.style.display = 'block';
+    tokenInput.placeholder = '请输入 Bot Token';
+    tokenHelp.textContent = 'Telegram Bot Token，如 123456:ABC-DEF';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '';
-  } else {
-    tgTokenGroup.style.display = 'none';
-    if (val === 'onebot_private') {
-      receiverLabel.textContent = '用户 ID (user_id)';
-      chatId.placeholder = '';
-    } else if (val === 'onebot_group') {
-      receiverLabel.textContent = '群 ID (group_id)';
-      chatId.placeholder = '';
-    } else {
-      receiverLabel.textContent = '接收者 ID (可选)';
-      chatId.placeholder = '';
-    }
+    chatId.placeholder = '数字 ID 或 @username';
+    chatHelp.textContent = '必填，消息接收者的 chat_id';
+  } else if (val === 'serverchan') {
+    tokenInput.placeholder = '请输入 SendKey';
+    tokenHelp.textContent = 'Server酱 SendKey，从 https://sct.ftqq.com/ 获取';
+    receiverLabel.textContent = '消息标题 (可选)';
+    chatId.placeholder = '留空则使用默认标题';
+    chatHelp.textContent = '作为推送消息的标题，不填则使用 "B站直播通知"';
   }
 }
 
@@ -563,12 +561,19 @@ function initNotifyEvents() {
     e.preventDefault();
     var form = this;
     var protocol = document.getElementById('protocolSelect').value;
-    var apiUrl = document.getElementById('apiUrl').value;
+    var token = document.getElementById('tokenInput').value.trim();
+    if (!token) { showMessage('请输入令牌', 'error'); return; }
+    var apiUrl = '';
     if (protocol === 'telegram') {
-      var token = document.getElementById('tgToken').value.trim();
-      if (!token) { showMessage('请输入 Bot Token', 'error'); return; }
       apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+    } else if (protocol === 'serverchan') {
+      apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
+    } else {
+      showMessage('不支持的协议', 'error');
+      return;
     }
+    document.getElementById('apiUrl').value = apiUrl;
+
     var formData = new FormData(form);
     var payload = {
       name: formData.get('name'),
@@ -581,15 +586,9 @@ function initNotifyEvents() {
     if (protocol === 'telegram') {
       payload.receiver_key = 'chat_id';
       payload.message_key = 'text';
-    } else if (protocol === 'onebot_private') {
-      payload.receiver_key = 'user_id';
-      payload.message_key = 'message';
-    } else if (protocol === 'onebot_group') {
-      payload.receiver_key = 'group_id';
-      payload.message_key = 'message';
-    } else {
-      payload.receiver_key = '';
-      payload.message_key = '';
+    } else if (protocol === 'serverchan') {
+      payload.receiver_key = 'chat_id';   // 用作标题
+      payload.message_key = 'text';       // 实际不用，但保留
     }
     try {
       await axios.post('/api/notify-configs', payload);
@@ -673,6 +672,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // 代理 API 请求到后端
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
@@ -684,7 +684,7 @@ export default {
       headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
       headers.set('X-Forwarded-Proto', 'https');
 
-      // 注入 ctn32 Cookie
+      // 注入 ctn32 Cookie（用于 bypass 认证）
       const oldCookie = request.headers.get('cookie') || '';
       let newCookie = oldCookie;
       if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
@@ -772,7 +772,7 @@ export default {
       });
     }
 
-    // 路由
+    // 前端路由
     if (path === '/login') {
       return new Response(LOGIN_PAGE, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
