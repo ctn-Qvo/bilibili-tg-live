@@ -1,3 +1,4 @@
+// ==================== 配置常量 ====================
 const CONFIG = {
   UAPI_DIRECT: 'https://uapis.cn/api/v1/social/bilibili/liveroom?room_id=',
   USER_API_DIRECT: 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=',
@@ -10,6 +11,7 @@ const CONFIG = {
   DEFAULT_TEMPLATE: `[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}`
 };
 
+// ==================== 代理链 ====================
 const PROXY_CHAIN = [
   {
     name: 'cfspider',
@@ -24,6 +26,7 @@ const PROXY_CHAIN = [
   }
 ];
 
+// ==================== 工具函数 ====================
 function toRoomId(id) { return String(id).trim(); }
 function buildCacheKey(...parts) { return parts.join(':'); }
 function normalizeCover(url) { if (!url) return ''; return url.split('?')[0].trim(); }
@@ -35,6 +38,7 @@ function hasBypassCookie(request) {
   return cookie.split(';').map(c => c.trim()).includes('ctn32=ctn32');
 }
 
+// ==================== 缓存操作 ====================
 async function getCache(key) {
   const cache = caches.default;
   const req = new Request('https://cache/' + key);
@@ -51,6 +55,7 @@ async function setCache(key, data, ttl) {
   await cache.put(new Request('https://cache/' + key), resp);
 }
 
+// ==================== 日志系统 ====================
 async function systemLog(env, level, message, data = {}) {
   const time = new Date().toISOString();
   const text = Object.keys(data).length ? message + ' ' + JSON.stringify(data) : message;
@@ -75,6 +80,7 @@ async function cleanOldLogs(env) {
   }
 }
 
+// ==================== 网络请求（直连 + 代理） ====================
 async function fetchDirect(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -124,6 +130,7 @@ async function fetchThroughProxy(targetUrl, env) {
   throw new Error('代理链全部失败: ' + (lastError?.message || 'unknown'));
 }
 
+// ==================== B站 API 构建 ====================
 function buildUapiRoom(roomId) {
   return CONFIG.UAPI_DIRECT + encodeURIComponent(toRoomId(roomId));
 }
@@ -148,6 +155,7 @@ function normalizeRoomData(data, roomId) {
   };
 }
 
+// ==================== 直播状态获取（多源） ====================
 async function fetchLiveStatus(roomId, env) {
   roomId = toRoomId(roomId);
   const cacheKey = 'live:' + roomId;
@@ -248,6 +256,7 @@ async function fetchLiveStatus(roomId, env) {
   return null;
 }
 
+// ==================== 用户信息获取 ====================
 async function fetchUserInfo(uid, env) {
   if (!uid) return null;
   const cacheKey = buildCacheKey('userinfo', uid);
@@ -289,29 +298,41 @@ async function fetchUserInfo(uid, env) {
   return null;
 }
 
+// ==================== 通知系统（仅 Telegram + Server酱） ====================
 async function sendNotificationToConfig(config, text, extra) {
   extra = extra || {};
   try {
-    let payload = {};
-    if (config.protocol === 'discord') {
-      payload = { content: text };
-    } else if (config.protocol === 'custom_webhook') {
-      payload = extra;
-    } else {
+    if (config.protocol === 'telegram') {
       const receiverKey = config.receiver_key || 'chat_id';
       const messageKey = config.message_key || 'text';
-      payload[receiverKey] = config.chat_id;
-      payload[messageKey] = text;
+      const payload = {
+        [receiverKey]: config.chat_id,
+        [messageKey]: text
+      };
+      if (config.extra_params) Object.assign(payload, config.extra_params);
+      const resp = await fetch(config.api_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) return { success: true };
+      const errText = await resp.text();
+      return { success: false, error: errText };
+    } else if (config.protocol === 'serverchan') {
+      // Server酱：用 text 作为 desp，标题用 config.chat_id 或默认
+      const title = config.chat_id || 'B站直播通知';
+      const params = new URLSearchParams({ text: title, desp: text });
+      const resp = await fetch(config.api_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      });
+      if (resp.ok) return { success: true };
+      const errText = await resp.text();
+      return { success: false, error: errText };
+    } else {
+      return { success: false, error: '不支持的协议: ' + config.protocol };
     }
-    if (config.extra_params) Object.assign(payload, config.extra_params);
-    const resp = await fetch(config.api_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (resp.ok) return { success: true };
-    const errText = await resp.text();
-    return { success: false, error: errText };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -333,6 +354,7 @@ async function sendNotification(text, env, extra) {
   return success;
 }
 
+// ==================== 通知内容构建 ====================
 async function buildNotification(roomId, current, env, eventType, extra) {
   extra = extra || {};
   let userInfo = null;
@@ -404,6 +426,7 @@ async function buildNotification(roomId, current, env, eventType, extra) {
   return renderTemplate(template, baseVars);
 }
 
+// ==================== 数据库操作 ====================
 async function getRoomList(env) {
   const { results } = await env.DB.prepare('SELECT room_id FROM rooms').all();
   return results.map(row => row.room_id);
@@ -495,6 +518,7 @@ async function addClientError(env, data) {
   return id;
 }
 
+// ==================== 监控逻辑 ====================
 async function processRoom(roomId, env, options) {
   options = options || {};
   roomId = toRoomId(roomId);
@@ -585,6 +609,7 @@ async function monitorAll(env, options) {
   return results;
 }
 
+// ==================== 认证与 CORS ====================
 function isAuthenticated(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const authCookie = cookie.split(';').find(c => c.trim().startsWith('auth='));
@@ -624,6 +649,7 @@ function jsonResponse(data, status = 200, request, env) {
   });
 }
 
+// ==================== HTTP 路由 ====================
 async function handleRequest(request, env) {
   try {
     const url = new URL(request.url);
@@ -705,11 +731,20 @@ async function handleRequest(request, env) {
       let body; try { body = await request.json(); } catch { body = {}; }
       const { name, protocol, api_url, chat_id, template, extra_params } = body;
       if (!name) return jsonResponse({ error: '缺少名称' }, 400, request, env);
+      // 仅允许 telegram 或 serverchan
+      if (!['telegram', 'serverchan'].includes(protocol)) {
+        return jsonResponse({ error: '仅支持 telegram 或 serverchan 协议' }, 400, request, env);
+      }
       const config = {
-        name, protocol: protocol || 'telegram', api_url: api_url || '',
-        chat_id: chat_id || '', receiver_key: body.receiver_key || 'chat_id',
-        message_key: body.message_key || 'text', template: template || CONFIG.DEFAULT_TEMPLATE,
-        extra_params: extra_params || {}, enabled: true
+        name,
+        protocol: protocol || 'telegram',
+        api_url: api_url || '',
+        chat_id: chat_id || '',
+        receiver_key: body.receiver_key || 'chat_id',
+        message_key: body.message_key || 'text',
+        template: template || CONFIG.DEFAULT_TEMPLATE,
+        extra_params: extra_params || {},
+        enabled: true
       };
       const result = await addNotifyConfig(env, config);
       return jsonResponse(result, 200, request, env);
