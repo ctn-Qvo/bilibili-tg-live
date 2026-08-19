@@ -11,7 +11,7 @@ const CONFIG = {
   DEFAULT_TEMPLATE: `[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}`
 };
 
-// ==================== 代理链 ====================
+// ==================== 代理链（用于 B站 API） ====================
 const PROXY_CHAIN = [
   {
     name: 'cfspider',
@@ -22,6 +22,23 @@ const PROXY_CHAIN = [
     build: (targetUrl) => {
       const withoutProtocol = targetUrl.replace(/^https?:\/\//, '');
       return 'https://vercel-proxy.ctn32.us.kg/https/' + withoutProtocol;
+    }
+  }
+];
+
+// ==================== Server酱 专用代理配置（后端自动处理） ====================
+const SERVERCHAN_PROXIES = [
+  {
+    // 直接拼接完整 URL（包括协议）
+    base: 'http://http-proxy.ctn32.qzz.io/',
+    transform: (targetUrl) => targetUrl // 保持原样
+  },
+  {
+    // Vercel 代理需要去掉协议，仅保留路径，并加上 /https/ 前缀
+    base: 'https://vercel-proxy.ctn32.us.kg/',
+    transform: (targetUrl) => {
+      const withoutProtocol = targetUrl.replace(/^https?:\/\//, '');
+      return 'https/' + withoutProtocol; // 结果如 https/sctapi.ftqq.com/SENDKEY.send
     }
   }
 ];
@@ -298,7 +315,7 @@ async function fetchUserInfo(uid, env) {
   return null;
 }
 
-// ==================== 通知系统（仅 Telegram + Server酱） ====================
+// ==================== 通知系统（Telegram + Server酱，Server酱 走代理） ====================
 async function sendNotificationToConfig(config, text, extra) {
   extra = extra || {};
   try {
@@ -319,17 +336,39 @@ async function sendNotificationToConfig(config, text, extra) {
       const errText = await resp.text();
       return { success: false, error: errText };
     } else if (config.protocol === 'serverchan') {
-      // Server酱：用 text 作为 desp，标题用 config.chat_id 或默认
       const title = config.chat_id || 'B站直播通知';
       const params = new URLSearchParams({ text: title, desp: text });
-      const resp = await fetch(config.api_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString()
-      });
-      if (resp.ok) return { success: true };
-      const errText = await resp.text();
-      return { success: false, error: errText };
+      const targetUrl = config.api_url; // 例如 https://sctapi.ftqq.com/SENDKEY.send
+
+      let lastError = null;
+      for (const proxy of SERVERCHAN_PROXIES) {
+        try {
+          // 根据代理类型转换目标 URL
+          const path = proxy.transform(targetUrl);
+          // 确保 base 以 / 结尾
+          const base = proxy.base.endsWith('/') ? proxy.base : proxy.base + '/';
+          const proxyUrl = base + path;
+          console.log('[Server酱] 尝试代理:', proxyUrl);
+
+          const resp = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+          });
+
+          if (resp.ok) {
+            console.log('[Server酱] 代理成功:', proxy.base);
+            return { success: true };
+          }
+          const errText = await resp.text();
+          console.warn('[Server酱] 代理失败:', proxy.base, '状态:', resp.status, '错误:', errText);
+          lastError = errText;
+        } catch (e) {
+          console.error('[Server酱] 代理异常:', proxy.base, e.message);
+          lastError = e.message;
+        }
+      }
+      return { success: false, error: '所有代理请求失败: ' + lastError };
     } else {
       return { success: false, error: '不支持的协议: ' + config.protocol };
     }
