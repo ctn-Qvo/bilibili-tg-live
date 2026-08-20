@@ -640,7 +640,7 @@ async function renderConfigs() {
   try {
     var res = await axios.get('/api/notify-configs');
     var configs = res.data;
-    if (!configs.length) {
+    if (!configs || !configs.length) {
       tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无配置</td></tr>';
       return;
     }
