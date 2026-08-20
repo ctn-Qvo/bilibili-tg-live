@@ -95,7 +95,6 @@ function normalizeRooms(rooms) {
   });
 }
 
-// 解析房间输入：支持英文逗号、中文逗号、空格分隔，自动过滤空值
 function parseRoomIds(input) {
   if (!input) return [];
   return String(input).split(/[,，\s]+/).map(s => s.trim()).filter(s => s !== '');
@@ -520,7 +519,7 @@ window.initPage = async function() {
 };
 `);
 
-// ========== 通知配置页面（重构版） ==========
+// ==================== 通知配置页面（最终版） ====================
 const NOTIFY_PAGE = dashboardTemplate(`
 <div class="row g-4">
   <div class="col-lg-6">
@@ -530,11 +529,11 @@ const NOTIFY_PAGE = dashboardTemplate(`
         <form id="addNotifyForm" class="row g-3">
           <div class="col-md-6">
             <label class="form-label fw-semibold">名称</label>
-            <input type="text" name="name" id="addName" class="form-control" placeholder="如：我的Telegram" required>
+            <input type="text" id="addName" class="form-control" placeholder="如：我的Telegram" required>
           </div>
           <div class="col-md-6">
             <label class="form-label fw-semibold">协议</label>
-            <select name="protocol" id="addProtocol" class="form-select">
+            <select id="addProtocol" class="form-select">
               <option value="telegram">Telegram</option>
               <option value="serverchan">Server酱</option>
             </select>
@@ -544,7 +543,6 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <input type="text" id="addToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
             <small id="addTokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small>
           </div>
-          <input type="hidden" id="addApiUrl" name="api_url">
           <!-- 接收者 ID（Telegram） -->
           <div class="col-12" id="addReceiverGroup">
             <label class="form-label fw-semibold" id="addReceiverLabel">接收者 ID (chat_id)</label>
@@ -564,7 +562,7 @@ const NOTIFY_PAGE = dashboardTemplate(`
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板（可选）</label>
-            <textarea name="template" id="addTemplate" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
+            <textarea id="addTemplate" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
           </div>
           <div class="col-12">
             <button type="button" id="addSubmitBtn" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> 添加配置</button>
@@ -643,9 +641,7 @@ const NOTIFY_PAGE = dashboardTemplate(`
   </div>
 </div>
 `, 'notify', `
-var allRooms = [];
-
-// ---------- 添加表单 ----------
+// ========== 切换UI函数（添加表单） ==========
 function updateAddForm() {
   var protocol = document.getElementById('addProtocol').value;
   var receiverGroup = document.getElementById('addReceiverGroup');
@@ -654,6 +650,7 @@ function updateAddForm() {
   var tokenHelp = document.getElementById('addTokenHelp');
   var receiverLabel = document.getElementById('addReceiverLabel');
   var receiverHelp = document.getElementById('addReceiverHelp');
+
   if (protocol === 'telegram') {
     receiverGroup.style.display = 'block';
     titleGroup.style.display = 'none';
@@ -663,7 +660,7 @@ function updateAddForm() {
     receiverHelp.textContent = '必填，消息接收者的 chat_id';
     document.getElementById('addReceiverId').required = true;
     document.getElementById('addTitle').required = false;
-  } else if (protocol === 'serverchan') {
+  } else { // serverchan
     receiverGroup.style.display = 'none';
     titleGroup.style.display = 'block';
     tokenInput.placeholder = '请输入 SendKey';
@@ -673,7 +670,7 @@ function updateAddForm() {
   }
 }
 
-// ---------- 编辑表单 ----------
+// ========== 切换UI函数（编辑表单） ==========
 function updateEditForm() {
   var protocol = document.getElementById('editProtocol').value;
   var receiverGroup = document.getElementById('editReceiverGroup');
@@ -681,6 +678,7 @@ function updateEditForm() {
   var tokenInput = document.getElementById('editToken');
   var receiverLabel = document.getElementById('editReceiverLabel');
   var receiverHelp = document.getElementById('editReceiverHelp');
+
   if (protocol === 'telegram') {
     receiverGroup.style.display = 'block';
     titleGroup.style.display = 'none';
@@ -689,7 +687,7 @@ function updateEditForm() {
     receiverHelp.textContent = '必填，消息接收者的 chat_id';
     document.getElementById('editReceiverId').required = true;
     document.getElementById('editTitle').required = false;
-  } else if (protocol === 'serverchan') {
+  } else {
     receiverGroup.style.display = 'none';
     titleGroup.style.display = 'block';
     tokenInput.placeholder = '请输入 SendKey';
@@ -699,20 +697,34 @@ function updateEditForm() {
   }
 }
 
-// ---------- 加载房间列表到页面（已无下拉，保留备用） ----------
+// ========== 安全提取 Token ==========
+function extractToken(apiUrl, protocol) {
+  if (!apiUrl) return '';
+  try {
+    if (protocol === 'telegram') {
+      var match = apiUrl.match(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/);
+      return match ? match[1] : '';
+    } else if (protocol === 'serverchan') {
+      var match = apiUrl.match(/^https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send$/);
+      return match ? match[1] : '';
+    }
+  } catch(e) { return ''; }
+  return '';
+}
+
+// ========== 加载房间列表（内部使用） ==========
+var allRooms = [];
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
     var rawRooms = res.data.rooms;
-    var rooms = normalizeRooms(rawRooms);
-    allRooms = rooms;
-    // 不再填充下拉菜单，因为改为手动输入
+    allRooms = normalizeRooms(rawRooms);
   } catch (e) {
     console.error('加载房间列表失败', e);
   }
 }
 
-// ---------- 渲染配置列表 ----------
+// ========== 渲染配置列表 ==========
 async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
   try {
@@ -738,20 +750,20 @@ async function renderConfigs() {
   }
 }
 
-// ---------- 初始化事件 ----------
+// ========== 初始化事件 ==========
 function initNotifyEvents() {
-  // 添加表单：协议切换
+  // 添加表单协议切换
   document.getElementById('addProtocol').addEventListener('change', updateAddForm);
-  updateAddForm();
-
-  // 编辑表单：协议切换
+  // 编辑表单协议切换
   document.getElementById('editProtocol').addEventListener('change', updateEditForm);
-  // 初始化编辑表单（默认显示Telegram）
+  // 初始化显示
+  updateAddForm();
   updateEditForm();
 
-  // 添加提交按钮
-  document.getElementById('addSubmitBtn').addEventListener('click', async function() {
-    var form = document.getElementById('addNotifyForm');
+  // 添加按钮
+  document.getElementById('addSubmitBtn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    var btn = this;
     var protocol = document.getElementById('addProtocol').value;
     var name = document.getElementById('addName').value.trim();
     var token = document.getElementById('addToken').value.trim();
@@ -762,10 +774,10 @@ function initNotifyEvents() {
 
     if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
+    if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
 
     var apiUrl = '';
     if (protocol === 'telegram') {
-      if (!receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
       apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
     } else if (protocol === 'serverchan') {
       apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
@@ -789,41 +801,45 @@ function initNotifyEvents() {
       message_key: 'text'
     };
 
-    this.disabled = true;
-    this.textContent = '提交中...';
+    btn.disabled = true;
+    btn.textContent = '提交中...';
     try {
       await axios.post('/api/notify-configs', payload);
       showMessage('配置添加成功', 'info');
       await renderConfigs();
-      form.reset();
+      document.getElementById('addNotifyForm').reset();
       updateAddForm();
       document.getElementById('addRoomIdsInput').value = '';
-    } catch (e) {
-      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    } catch (err) {
+      var errMsg = (err.response && err.response.data && err.response.data.error) ? err.response.data.error : err.message;
       showMessage('添加失败: ' + errMsg, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '添加配置';
     }
-    this.disabled = false;
-    this.textContent = '添加配置';
   });
 
-  // 全局事件：测试、切换、删除、编辑
+  // 全局事件（测试、切换、删除、编辑）
   document.addEventListener('click', async function(e) {
-    var btn = closest(e.target, '.test-btn');
-    if (btn) {
-      var id = btn.dataset.id;
-      btn.disabled = true;
-      btn.textContent = '测试中...';
+    // 测试
+    var testBtn = closest(e.target, '.test-btn');
+    if (testBtn) {
+      var id = testBtn.dataset.id;
+      testBtn.disabled = true;
+      testBtn.textContent = '测试中...';
       try {
         var res = await axios.post('/api/notify-configs/test', { id: id });
         showMessage(res.data.message || '测试成功', 'info');
-      } catch (e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      } catch (err) {
+        var errMsg = (err.response && err.response.data && err.response.data.error) ? err.response.data.error : err.message;
         showMessage('测试失败: ' + errMsg, 'error');
       }
-      btn.disabled = false;
-      btn.textContent = '测试';
+      testBtn.disabled = false;
+      testBtn.textContent = '测试';
       return;
     }
+
+    // 切换
     var toggleBtn = closest(e.target, '.toggle-btn');
     if (toggleBtn) {
       var id = toggleBtn.dataset.id;
@@ -833,14 +849,16 @@ function initNotifyEvents() {
         await axios.post('/api/notify-configs/toggle', { id: id });
         showMessage('切换成功', 'info');
         await renderConfigs();
-      } catch (e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      } catch (err) {
+        var errMsg = (err.response && err.response.data && err.response.data.error) ? err.response.data.error : err.message;
         showMessage('切换失败: ' + errMsg, 'error');
         toggleBtn.disabled = false;
         toggleBtn.textContent = '切换';
       }
       return;
     }
+
+    // 删除
     var deleteBtn = closest(e.target, '.delete-config-btn');
     if (deleteBtn) {
       var id = deleteBtn.dataset.id;
@@ -849,12 +867,14 @@ function initNotifyEvents() {
         await axios.delete('/api/notify-configs', { data: { id: id } });
         showMessage('删除成功', 'info');
         await renderConfigs();
-      } catch (e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      } catch (err) {
+        var errMsg = (err.response && err.response.data && err.response.data.error) ? err.response.data.error : err.message;
         showMessage('删除失败: ' + errMsg, 'error');
       }
       return;
     }
+
+    // 编辑
     var editBtn = closest(e.target, '.edit-config-btn');
     if (editBtn) {
       var id = editBtn.dataset.id;
@@ -866,17 +886,8 @@ function initNotifyEvents() {
         document.getElementById('editConfigId').value = cfg.id;
         document.getElementById('editName').value = cfg.name;
         document.getElementById('editProtocol').value = cfg.protocol;
-        // 令牌回显
-        var tokenVal = '';
-        if (cfg.protocol === 'telegram') {
-          tokenVal = cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1');
-        } else if (cfg.protocol === 'serverchan') {
-          var match = cfg.api_url.match(/https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send/);
-          if (match) tokenVal = match[1];
-        }
-        document.getElementById('editToken').value = tokenVal;
+        document.getElementById('editToken').value = extractToken(cfg.api_url, cfg.protocol);
 
-        // 根据协议回填接收者ID或标题
         if (cfg.protocol === 'telegram') {
           document.getElementById('editReceiverId').value = cfg.chat_id || '';
           document.getElementById('editTitle').value = '';
@@ -886,22 +897,23 @@ function initNotifyEvents() {
         }
 
         document.getElementById('editTemplate').value = cfg.template || '';
-        // 房间列表回显
         var roomIds = cfg.room_ids || [];
         document.getElementById('editRoomIdsInput').value = roomIds.join(', ');
 
-        // 更新编辑表单的显示状态
         updateEditForm();
         var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
         modal.show();
-      } catch (e) {
-        showMessage('加载配置详情失败: ' + e.message, 'error');
+      } catch (err) {
+        showMessage('加载配置详情失败: ' + err.message, 'error');
       }
+      return;
     }
   });
 
-  // 编辑保存按钮
-  document.getElementById('editSaveBtn').addEventListener('click', async function() {
+  // 编辑保存
+  document.getElementById('editSaveBtn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    var btn = this;
     var id = document.getElementById('editConfigId').value;
     var name = document.getElementById('editName').value.trim();
     var protocol = document.getElementById('editProtocol').value;
@@ -913,10 +925,10 @@ function initNotifyEvents() {
 
     if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
+    if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
 
     var apiUrl = '';
     if (protocol === 'telegram') {
-      if (!receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
       apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
     } else if (protocol === 'serverchan') {
       apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
@@ -940,26 +952,33 @@ function initNotifyEvents() {
       message_key: 'text'
     };
 
-    this.disabled = true;
-    this.textContent = '保存中...';
+    btn.disabled = true;
+    btn.textContent = '保存中...';
     try {
       await axios.put('/api/notify-configs/' + id, payload);
       showMessage('配置更新成功', 'info');
       bootstrap.Modal.getInstance(document.getElementById('editNotifyModal')).hide();
       await renderConfigs();
-    } catch (e) {
-      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    } catch (err) {
+      var errMsg = (err.response && err.response.data && err.response.data.error) ? err.response.data.error : err.message;
       showMessage('更新失败: ' + errMsg, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '保存';
     }
-    this.disabled = false;
-    this.textContent = '保存';
   });
 }
 
+// ========== 页面初始化 ==========
 window.initPage = async function() {
-  await loadRoomSelect();
-  await renderConfigs();
-  initNotifyEvents();
+  try {
+    await loadRoomSelect();
+    await renderConfigs();
+    initNotifyEvents();
+  } catch (e) {
+    console.error('页面初始化失败:', e);
+    showMessage('页面加载失败，请刷新重试', 'error');
+  }
 };
 `);
 
