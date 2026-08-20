@@ -543,9 +543,9 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
-            <select name="room_ids" id="roomIdsSelect" class="form-select" multiple style="height:120px;"></select>
-            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+            <label class="form-label fw-semibold">指定房间（多个用英文逗号分隔）</label>
+            <input type="text" name="room_ids" id="roomIdsInput" class="form-control" placeholder="例如：123456,789012 或留空表示全部">
+            <small class="text-muted">留空则推送所有房间</small>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板（可选）</label>
@@ -602,9 +602,9 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <small id="editChatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
-            <select id="editRoomIds" class="form-select" multiple style="height:120px;"></select>
-            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+            <label class="form-label fw-semibold">指定房间（多个用英文逗号分隔）</label>
+            <input type="text" id="editRoomIdsInput" class="form-control" placeholder="例如：123456,789012 或留空表示全部">
+            <small class="text-muted">留空则推送所有房间</small>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板</label>
@@ -620,38 +620,6 @@ const NOTIFY_PAGE = dashboardTemplate(`
   </div>
 </div>
 `, 'notify', `
-var allRooms = [];
-
-async function loadRoomSelect() {
-  try {
-    var res = await axios.get('/api/rooms');
-    var rawRooms = res.data.rooms;
-    var rooms = normalizeRooms(rawRooms);
-    allRooms = rooms;
-    var select = document.getElementById('roomIdsSelect');
-    var editSelect = document.getElementById('editRoomIds');
-    select.innerHTML = '';
-    editSelect.innerHTML = '';
-    rooms.forEach(function(room) {
-      var id = room.room_id;
-      var opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = '房间 ' + id;
-      select.appendChild(opt);
-      var opt2 = document.createElement('option');
-      opt2.value = id;
-      opt2.textContent = '房间 ' + id;
-      editSelect.appendChild(opt2);
-    });
-    if (rooms.length === 1) {
-      select.selectedIndex = 0;
-      editSelect.selectedIndex = 0;
-    }
-  } catch (e) {
-    console.error('加载房间列表失败', e);
-  }
-}
-
 async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
   try {
@@ -668,7 +636,7 @@ async function renderConfigs() {
       var status = cfg.enabled ? '启用' : '禁用';
       var statusColor = cfg.enabled ? 'success' : 'secondary';
       var roomIds = cfg.room_ids || [];
-      var roomDisplay = roomIds.length ? roomIds.map(function(id){ return '房间'+id; }).join(', ') : '全部';
+      var roomDisplay = roomIds.length ? roomIds.join(', ') : '全部';
       html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="edit-config-btn btn btn-sm btn-outline-info me-1" data-id="' + cfg.id + '">编辑</button><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
     }
     tbody.innerHTML = html;
@@ -688,7 +656,7 @@ function updateAddForm() {
     tokenInput.placeholder = '请输入 Bot Token';
     tokenHelp.textContent = 'Telegram Bot Token';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID';
+    chatId.placeholder = '数字 ID 或 @username';
     chatHelp.textContent = '必填，消息接收者的 chat_id';
   } else if (protocol === 'serverchan') {
     tokenInput.placeholder = '请输入 SendKey';
@@ -708,7 +676,7 @@ function updateEditForm() {
   if (protocol === 'telegram') {
     tokenInput.placeholder = '请输入 Bot Token';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID';
+    chatId.placeholder = '数字 ID 或 @username';
     chatHelp.textContent = '必填，消息接收者的 chat_id';
   } else if (protocol === 'serverchan') {
     tokenInput.placeholder = '请输入 SendKey';
@@ -742,7 +710,8 @@ function initNotifyEvents() {
     document.getElementById('apiUrl').value = apiUrl;
 
     var formData = new FormData(form);
-    var selectedRoomIds = Array.from(document.getElementById('roomIdsSelect').selectedOptions).map(function(opt){ return opt.value; });
+    var roomIdsRaw = document.getElementById('roomIdsInput').value.trim();
+    var roomIds = roomIdsRaw ? roomIdsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
 
     var payload = {
       name: formData.get('name'),
@@ -751,7 +720,7 @@ function initNotifyEvents() {
       chat_id: formData.get('chat_id') || '',
       template: formData.get('template') || '',
       extra_params: {},
-      room_ids: selectedRoomIds
+      room_ids: roomIds
     };
     if (protocol === 'telegram') {
       payload.receiver_key = 'chat_id';
@@ -766,7 +735,7 @@ function initNotifyEvents() {
       await renderConfigs();
       form.reset();
       updateAddForm();
-      await loadRoomSelect();
+      document.getElementById('roomIdsInput').value = '';
     } catch (e) {
       var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
       showMessage('添加失败: ' + errMsg, 'error');
@@ -841,15 +810,7 @@ function initNotifyEvents() {
         document.getElementById('editToken').value = tokenVal;
         document.getElementById('editChatId').value = cfg.chat_id || '';
         document.getElementById('editTemplate').value = cfg.template || '';
-        var editRoomSelect = document.getElementById('editRoomIds');
-        var roomOptions = editRoomSelect.options;
-        var roomIds = cfg.room_ids || [];
-        for (var i = 0; i < roomOptions.length; i++) {
-          roomOptions[i].selected = roomIds.indexOf(roomOptions[i].value) !== -1;
-        }
-        if (roomIds.length === 0 && roomOptions.length === 1) {
-          roomOptions[0].selected = true;
-        }
+        document.getElementById('editRoomIdsInput').value = (cfg.room_ids || []).join(', ');
         updateEditForm();
         var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
         modal.show();
@@ -866,7 +827,8 @@ function initNotifyEvents() {
     var token = document.getElementById('editToken').value.trim();
     var chatId = document.getElementById('editChatId').value.trim();
     var template = document.getElementById('editTemplate').value;
-    var roomIds = Array.from(document.getElementById('editRoomIds').selectedOptions).map(function(opt){ return opt.value; });
+    var roomIdsRaw = document.getElementById('editRoomIdsInput').value.trim();
+    var roomIds = roomIdsRaw ? roomIdsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
 
     if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
@@ -907,7 +869,6 @@ function initNotifyEvents() {
 }
 
 window.initPage = async function() {
-  await loadRoomSelect();
   await renderConfigs();
   initNotifyEvents();
 };
