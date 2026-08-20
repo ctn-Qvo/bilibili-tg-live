@@ -200,6 +200,47 @@ function logout() {
 }
 `;
 
+const LOGIN_PAGE = `<!DOCTYPE html>
+<html lang="zh">
+<head>${COMMON_HEAD}
+<title>直播监控 - 登录</title>
+</head>
+<body>
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div class="col-md-4"><div class="card shadow"><div class="card-body"><h1 class="card-title text-center">管理登录</h1><div id="loginError" class="alert alert-danger" style="display:none;"></div><form id="loginForm"><div class="mb-3"><label class="form-label">用户名</label><input type="text" id="loginUsername" class="form-control" required></div><div class="mb-3"><label class="form-label">密码</label><input type="password" id="loginPassword" class="form-control" required></div><button type="submit" class="btn btn-primary w-100">登录</button></form></div></div></div>
+</div>
+<script>
+${COMMON_JS}
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var btn = this.querySelector('button');
+  var errorEl = document.getElementById('loginError');
+  errorEl.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '登录中...';
+  try {
+    var username = document.getElementById('loginUsername').value.trim();
+    var password = document.getElementById('loginPassword').value;
+    if (!username || !password) throw new Error('请输入用户名和密码');
+    await loginReq(username, password);
+    window.location.href = '/dashboard/rooms';
+  } catch(err) {
+    errorEl.innerText = err.message || '登录失败';
+    errorEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '登录';
+  }
+});
+(async function() {
+  if (await checkAuth()) {
+    window.location.href = '/dashboard/rooms';
+  }
+})();
+</script>
+</body>
+</html>`;
+
 function dashboardTemplate(bodyContent, activeTab, pageScript) {
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -247,81 +288,39 @@ ${pageScript}
 </html>`;
 }
 
-const LOGIN_PAGE = `<!DOCTYPE html>
-<html lang="zh">
-<head>${COMMON_HEAD}
-<title>直播监控 - 登录</title>
-</head>
-<body>
-<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
-  <div class="col-md-4"><div class="card shadow"><div class="card-body"><h1 class="card-title text-center">管理登录</h1><div id="loginError" class="alert alert-danger" style="display:none;"></div><form id="loginForm"><div class="mb-3"><label class="form-label">用户名</label><input type="text" id="loginUsername" class="form-control" required></div><div class="mb-3"><label class="form-label">密码</label><input type="password" id="loginPassword" class="form-control" required></div><button type="submit" class="btn btn-primary w-100">登录</button></form></div></div></div>
-</div>
-<script>
-${COMMON_JS}
-document.getElementById('loginForm').addEventListener('submit', async function(e) {
-  e.preventDefault();
-  var btn = this.querySelector('button');
-  var errorEl = document.getElementById('loginError');
-  errorEl.style.display = 'none';
-  btn.disabled = true;
-  btn.innerHTML = '登录中...';
-  try {
-    var username = document.getElementById('loginUsername').value.trim();
-    var password = document.getElementById('loginPassword').value;
-    if (!username || !password) throw new Error('请输入用户名和密码');
-    await loginReq(username, password);
-    window.location.href = '/dashboard/rooms';
-  } catch(err) {
-    errorEl.innerText = err.message || '登录失败';
-    errorEl.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '登录';
-  }
-});
-(async function() {
-  if (await checkAuth()) {
-    window.location.href = '/dashboard/rooms';
-  }
-})();
-</script>
-</body>
-</html>`;
-
 const ROOMS_PAGE = dashboardTemplate(`
 <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-house-door"></i> 监控房间<div class="ms-auto d-flex flex-wrap gap-2"><button id="addRoomBtn" class="btn btn-sm btn-light"><i class="bi bi-plus-circle"></i> 添加</button><button id="checkAllBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-repeat"></i> 检查</button><button id="refreshRoomsBtn" class="btn btn-sm btn-light"><i class="bi bi-cloud-refresh"></i> 刷新</button><button id="sendLiveBtn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> 模拟</button><div class="input-group input-group-sm" style="width:200px;"><input id="singleCheckInput" class="form-control" placeholder="房间号"><button id="singleCheckBtn" class="btn btn-light">查</button></div></div></div><div class="card-body"><div id="roomContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3"></div></div></div>
 <div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
 <div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 id="modalTitle" class="modal-title">提示</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="modalMessage"></div><div class="modal-footer"><button type="button" id="modalConfirmBtn" class="btn btn-primary">确定</button><button type="button" id="modalCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">取消</button></div></div></div></div>
 `, 'rooms', `
-function renderRooms() {
+async function renderRooms() {
   var container = document.getElementById('roomContainer');
-  axios.get('/api/rooms')
-    .then(function(res) {
-      var rawRooms = res.data.rooms;
-      var rooms = normalizeRooms(rawRooms);
-      var states = res.data.states || {};
-      if (!rooms || !rooms.length) {
-        container.innerHTML = '<div class="col-12 text-center text-muted py-4">暂无房间，请添加</div>';
-        return;
-      }
-      var html = '';
-      for (var i = 0; i < rooms.length; i++) {
-        var room = rooms[i];
-        var id = room.room_id;
-        var state = states[id] || {};
-        var isLive = state.state === 'LIVE';
-        var dotClass = isLive ? 'live' : 'offline';
-        var title = state.last_title || '未知';
-        var online = state.last_online || 0;
-        var area = state.last_parent_area ? state.last_parent_area + ' - ' + state.last_area : '未知分区';
-        var updateTime = formatDate(state.last_update);
-        html += '<div class="col"><div class="card room-card h-100"><div class="card-body d-flex align-items-start"><span class="status-dot ' + dotClass + '"></span><div class="flex-grow-1 ms-2"><div class="room-title">' + escapeHtml(title) + '</div><div class="room-meta">房间 ' + id + ' · 人气 ' + online + ' · ' + escapeHtml(area) + '</div><div class="room-meta small">更新于 ' + updateTime + '</div></div><button class="delete-room-btn btn btn-outline-danger btn-sm" data-room="' + id + '" style="writing-mode: vertical-rl; letter-spacing: 2px; padding: 4px 6px; height: auto; min-height: 60px; line-height: 1.2;">删除</button></div></div></div>';
-      }
-      container.innerHTML = html;
-    })
-    .catch(function(e) {
-      showMessage('加载房间失败: ' + e.message, 'error');
-    });
+  try {
+    var res = await axios.get('/api/rooms');
+    var rawRooms = res.data.rooms;
+    var rooms = normalizeRooms(rawRooms);
+    var states = res.data.states || {};
+    if (!rooms || !rooms.length) {
+      container.innerHTML = '<div class="col-12 text-center text-muted py-4">暂无房间，请添加</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < rooms.length; i++) {
+      var room = rooms[i];
+      var id = room.room_id;
+      var state = states[id] || {};
+      var isLive = state.state === 'LIVE';
+      var dotClass = isLive ? 'live' : 'offline';
+      var title = state.last_title || '未知';
+      var online = state.last_online || 0;
+      var area = state.last_parent_area ? state.last_parent_area + ' - ' + state.last_area : '未知分区';
+      var updateTime = formatDate(state.last_update);
+      html += '<div class="col"><div class="card room-card h-100"><div class="card-body d-flex align-items-start"><span class="status-dot ' + dotClass + '"></span><div class="flex-grow-1 ms-2"><div class="room-title">' + escapeHtml(title) + '</div><div class="room-meta">房间 ' + id + ' · 人气 ' + online + ' · ' + escapeHtml(area) + '</div><div class="room-meta small">更新于 ' + updateTime + '</div></div><button class="delete-room-btn btn btn-outline-danger btn-sm" data-room="' + id + '" style="writing-mode: vertical-rl; letter-spacing: 2px; padding: 4px 6px; height: auto; min-height: 60px; line-height: 1.2;">删除</button></div></div></div>';
+    }
+    container.innerHTML = html;
+  } catch (e) {
+    showMessage('加载房间失败: ' + e.message, 'error');
+  }
 }
 
 function initRoomsEvents() {
@@ -330,117 +329,100 @@ function initRoomsEvents() {
     document.getElementById('roomInput').value = '';
     addRoomModal.show();
   });
-  document.getElementById('addRoomConfirmBtn').addEventListener('click', function() {
+  document.getElementById('addRoomConfirmBtn').addEventListener('click', async function() {
     var roomId = document.getElementById('roomInput').value.trim();
     if (!roomId) { showMessage('请输入房间号', 'error'); return; }
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = '提交中...';
-    axios.post('/api/rooms', { room_id: roomId })
-      .then(function() {
-        addRoomModal.hide();
-        showMessage('房间 ' + roomId + ' 已添加', 'info');
-        renderRooms();
-      })
-      .catch(function(e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        showMessage('添加失败: ' + errMsg, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.textContent = '完成';
-      });
+    this.disabled = true;
+    this.textContent = '提交中...';
+    try {
+      await axios.post('/api/rooms', { room_id: roomId });
+      addRoomModal.hide();
+      showMessage('房间 ' + roomId + ' 已添加', 'info');
+      await renderRooms();
+      document.getElementById('roomInput').value = '';
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('添加失败: ' + errMsg, 'error');
+    }
+    this.disabled = false;
+    this.textContent = '完成';
   });
 
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', async function(e) {
     var btn = closest(e.target, '.delete-room-btn');
     if (btn) {
       var roomId = btn.dataset.room;
       if (!confirm('确定删除房间 ' + roomId + ' 吗？')) return;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-      axios.delete('/api/rooms', { data: { room_id: roomId } })
-        .then(function() {
-          showMessage('房间 ' + roomId + ' 已删除', 'info');
-          renderRooms();
-        })
-        .catch(function(e) {
-          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-          showMessage('删除失败: ' + errMsg, 'error');
-          btn.disabled = false;
-          btn.innerHTML = '删除';
-        });
+      try {
+        await axios.delete('/api/rooms', { data: { room_id: roomId } });
+        showMessage('房间 ' + roomId + ' 已删除', 'info');
+        await renderRooms();
+      } catch (e) {
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('删除失败: ' + errMsg, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '删除';
+      }
     }
   });
 
-  document.getElementById('checkAllBtn').addEventListener('click', function() {
-    var btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    axios.post('/api/monitor', { force: true })
-      .then(function() {
-        showMessage('检查完成', 'info');
-        renderRooms();
-      })
-      .catch(function(e) {
-        showMessage('检查失败: ' + e.message, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> 检查';
-      });
+  document.getElementById('checkAllBtn').addEventListener('click', async function() {
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    try {
+      await axios.post('/api/monitor', { force: true });
+      showMessage('检查完成', 'info');
+      await renderRooms();
+    } catch (e) {
+      showMessage('检查失败: ' + e.message, 'error');
+    }
+    this.disabled = false;
+    this.innerHTML = '<i class="bi bi-arrow-repeat"></i> 检查';
   });
 
-  document.getElementById('refreshRoomsBtn').addEventListener('click', function() {
-    var btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    renderRooms();
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-cloud-refresh"></i> 刷新';
+  document.getElementById('refreshRoomsBtn').addEventListener('click', async function() {
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    await renderRooms();
+    this.disabled = false;
+    this.innerHTML = '<i class="bi bi-cloud-refresh"></i> 刷新';
   });
 
-  document.getElementById('sendLiveBtn').addEventListener('click', function() {
-    var btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    axios.post('/api/send-live-notify')
-      .then(function(res) {
-        showMessage(res.data.message || '发送成功', 'info');
-      })
-      .catch(function(e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        showMessage('发送失败: ' + errMsg, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
-      });
+  document.getElementById('sendLiveBtn').addEventListener('click', async function() {
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    try {
+      var res = await axios.post('/api/send-live-notify');
+      showMessage(res.data.message || '发送成功', 'info');
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('发送失败: ' + errMsg, 'error');
+    }
+    this.disabled = false;
+    this.innerHTML = '<i class="bi bi-broadcast"></i> 模拟';
   });
 
-  document.getElementById('singleCheckBtn').addEventListener('click', function() {
+  document.getElementById('singleCheckBtn').addEventListener('click', async function() {
     var roomId = document.getElementById('singleCheckInput').value.trim();
     if (!roomId) { showMessage('请输入房间号', 'error'); return; }
-    var btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    axios.post('/api/monitor', { force: true, room_id: roomId })
-      .then(function() {
-        showMessage('已触发检查，请稍后刷新查看', 'info');
-        setTimeout(renderRooms, 3000);
-      })
-      .catch(function(e) {
-        showMessage('操作失败: ' + e.message, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = '查';
-      });
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    try {
+      await axios.post('/api/monitor', { force: true, room_id: roomId });
+      showMessage('已触发检查，请稍后刷新查看', 'info');
+      setTimeout(renderRooms, 3000);
+    } catch (e) {
+      showMessage('操作失败: ' + e.message, 'error');
+    }
+    this.disabled = false;
+    this.innerHTML = '查';
   });
 }
 
-window.initPage = function() {
-  renderRooms();
+window.initPage = async function() {
+  await renderRooms();
   initRoomsEvents();
 };
 `);
@@ -451,15 +433,14 @@ const LOGS_PAGE = dashboardTemplate(`
 var allLogs = [];
 var logTimer = null;
 
-function fetchLogs() {
-  axios.get('/api/logs')
-    .then(function(res) {
-      allLogs = res.data;
-      renderLogs();
-    })
-    .catch(function(e) {
-      console.error('获取日志失败', e);
-    });
+async function fetchLogs() {
+  try {
+    var res = await axios.get('/api/logs');
+    allLogs = res.data;
+    renderLogs();
+  } catch (e) {
+    console.error('获取日志失败', e);
+  }
 }
 
 function renderLogs() {
@@ -467,15 +448,11 @@ function renderLogs() {
   var search = document.getElementById('logSearch').value.toLowerCase();
   var level = document.getElementById('logLevelFilter').value;
   var filtered = allLogs;
-  if (search) {
-    filtered = filtered.filter(function(e) {
-      var msg = String(e.message || '').toLowerCase();
-      return msg.indexOf(search) !== -1;
-    });
-  }
-  if (level) {
-    filtered = filtered.filter(function(e) { return e.level === level; });
-  }
+  if (search) filtered = filtered.filter(function(e) {
+    var msg = String(e.message || '').toLowerCase();
+    return msg.includes(search);
+  });
+  if (level) filtered = filtered.filter(function(e) { return e.level === level; });
   if (!filtered.length) {
     container.innerHTML = '<div class="text-secondary">暂无日志</div>';
     return;
@@ -511,16 +488,15 @@ function initLogsEvents() {
     fetchLogs();
   }
 
-  document.getElementById('clearLogsBtn').addEventListener('click', function() {
+  document.getElementById('clearLogsBtn').addEventListener('click', async function() {
     if (!confirm('确定清除所有日志吗？')) return;
-    axios.post('/api/logs/clear')
-      .then(function() {
-        showMessage('日志已清除', 'info');
-        fetchLogs();
-      })
-      .catch(function(e) {
-        showMessage('清除失败: ' + e.message, 'error');
-      });
+    try {
+      await axios.post('/api/logs/clear');
+      showMessage('日志已清除', 'info');
+      await fetchLogs();
+    } catch (e) {
+      showMessage('清除失败: ' + e.message, 'error');
+    }
   });
 
   document.getElementById('exportLogsBtn').addEventListener('click', function() {
@@ -532,8 +508,8 @@ function initLogsEvents() {
   });
 }
 
-window.initPage = function() {
-  fetchLogs();
+window.initPage = async function() {
+  await fetchLogs();
   initLogsEvents();
 };
 `);
@@ -568,13 +544,13 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定房间（多个用英文逗号分隔）</label>
-            <input type="text" name="room_ids" id="roomIdsInput" class="form-control" placeholder="例如：123456,789012 或留空表示全部">
-            <small class="text-muted">留空则推送所有房间</small>
+            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
+            <select name="room_ids" id="roomIdsSelect" class="form-select" multiple style="height:120px;"></select>
+            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">通知模板</label>
-            <textarea name="template" id="templateArea" class="form-control" rows="5"></textarea>
+            <label class="form-label fw-semibold">通知模板（可选）</label>
+            <textarea name="template" id="templateArea" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
           </div>
           <div class="col-12">
             <button type="submit" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> 添加配置</button>
@@ -627,9 +603,9 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <small id="editChatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定房间（多个用英文逗号分隔）</label>
-            <input type="text" id="editRoomIdsInput" class="form-control" placeholder="例如：123456,789012 或留空表示全部">
-            <small class="text-muted">留空则推送所有房间</small>
+            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
+            <select id="editRoomIds" class="form-select" multiple style="height:120px;"></select>
+            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板</label>
@@ -645,43 +621,57 @@ const NOTIFY_PAGE = dashboardTemplate(`
   </div>
 </div>
 `, 'notify', `
-var TELEGRAM_DEFAULT_TEMPLATE = '[{{事件}}] {{主播}}\\n标题：{{标题}}\\n房间号：{{房间号}} | UID：{{UID}}\\n分区：{{父分区}} - {{分区}}\\n人气：{{人气}} | 直播时间：{{直播时间}}\\n直播间链接：{{直播链接}}\\n封面：{{封面}}\\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\\nVIP：{{VIP类型}} ({{VIP状态}})\\n投稿数：{{投稿数}} | 文章数：{{文章数}}\\n签名：{{签名}}\\n头像：{{头像}}\\n更新时间：{{时间}}';
-var SERVERCHAN_DEFAULT_TEMPLATE = '[{{事件}}] {{主播}}\\n标题：{{标题}}\\n房间号：{{房间号}} | UID：{{UID}}\\n分区：{{父分区}} - {{分区}}\\n人气：{{人气}} | 直播时间：{{直播时间}}\\n直播间链接：{{直播链接}}';
+var allRooms = [];
 
-function updateTemplateByProtocol(protocol, targetId) {
-  var area = document.getElementById(targetId);
-  if (!area) return;
-  if (protocol === 'telegram') {
-    area.value = TELEGRAM_DEFAULT_TEMPLATE;
-  } else if (protocol === 'serverchan') {
-    area.value = SERVERCHAN_DEFAULT_TEMPLATE;
+async function loadRoomSelect() {
+  try {
+    var res = await axios.get('/api/rooms');
+    var rawRooms = res.data.rooms;
+    var rooms = normalizeRooms(rawRooms);
+    allRooms = rooms;
+    var select = document.getElementById('roomIdsSelect');
+    var editSelect = document.getElementById('editRoomIds');
+    select.innerHTML = '';
+    editSelect.innerHTML = '';
+    rooms.forEach(function(room) {
+      var id = room.room_id;
+      var opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = '房间 ' + id;
+      select.appendChild(opt);
+      var opt2 = document.createElement('option');
+      opt2.value = id;
+      opt2.textContent = '房间 ' + id;
+      editSelect.appendChild(opt2);
+    });
+  } catch (e) {
+    console.error('加载房间列表失败', e);
   }
 }
 
-function renderConfigs() {
+async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
-  axios.get('/api/notify-configs')
-    .then(function(res) {
-      var configs = res.data;
-      if (!configs || !configs.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无配置</td></tr>';
-        return;
-      }
-      var html = '';
-      for (var i = 0; i < configs.length; i++) {
-        var cfg = configs[i];
-        var protocolLabel = { telegram: 'Telegram', serverchan: 'Server酱' }[cfg.protocol] || cfg.protocol;
-        var status = cfg.enabled ? '启用' : '禁用';
-        var statusColor = cfg.enabled ? 'success' : 'secondary';
-        var roomIds = cfg.room_ids || [];
-        var roomDisplay = roomIds.length ? roomIds.join(', ') : '全部';
-        html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="edit-config-btn btn btn-sm btn-outline-info me-1" data-id="' + cfg.id + '">编辑</button><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
-      }
-      tbody.innerHTML = html;
-    })
-    .catch(function(e) {
-      showMessage('加载配置失败: ' + e.message, 'error');
-    });
+  try {
+    var res = await axios.get('/api/notify-configs');
+    var configs = res.data;
+    if (!configs || !configs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无配置</td></tr>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < configs.length; i++) {
+      var cfg = configs[i];
+      var protocolLabel = { telegram: 'Telegram', serverchan: 'Server酱' }[cfg.protocol] || cfg.protocol;
+      var status = cfg.enabled ? '启用' : '禁用';
+      var statusColor = cfg.enabled ? 'success' : 'secondary';
+      var roomIds = cfg.room_ids || [];
+      var roomDisplay = roomIds.length ? roomIds.map(function(id){ return '房间'+id; }).join(', ') : '全部';
+      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="edit-config-btn btn btn-sm btn-outline-info me-1" data-id="' + cfg.id + '">编辑</button><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
+    }
+    tbody.innerHTML = html;
+  } catch (e) {
+    showMessage('加载配置失败: ' + e.message, 'error');
+  }
 }
 
 function updateAddForm() {
@@ -704,7 +694,6 @@ function updateAddForm() {
     chatId.placeholder = '留空则使用默认标题';
     chatHelp.textContent = '作为推送消息的标题，不填则使用 "B站直播通知"';
   }
-  updateTemplateByProtocol(protocol, 'templateArea');
 }
 
 function updateEditForm() {
@@ -724,22 +713,15 @@ function updateEditForm() {
     chatId.placeholder = '留空则使用默认标题';
     chatHelp.textContent = '作为推送消息的标题，不填则使用 "B站直播通知"';
   }
-  if (document.getElementById('editTemplate').value === '') {
-    updateTemplateByProtocol(protocol, 'editTemplate');
-  }
 }
 
 function initNotifyEvents() {
-  document.getElementById('protocolSelect').addEventListener('change', function() {
-    updateAddForm();
-  });
-  document.getElementById('editProtocol').addEventListener('change', function() {
-    updateEditForm();
-  });
+  document.getElementById('protocolSelect').addEventListener('change', updateAddForm);
+  document.getElementById('editProtocol').addEventListener('change', updateEditForm);
   updateAddForm();
   updateEditForm();
 
-  document.getElementById('addNotifyForm').addEventListener('submit', function(e) {
+  document.getElementById('addNotifyForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     var form = this;
     var protocol = document.getElementById('protocolSelect').value;
@@ -757,8 +739,7 @@ function initNotifyEvents() {
     document.getElementById('apiUrl').value = apiUrl;
 
     var formData = new FormData(form);
-    var roomIdsRaw = document.getElementById('roomIdsInput').value.trim();
-    var roomIds = roomIdsRaw ? roomIdsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
+    var selectedRoomIds = Array.from(document.getElementById('roomIdsSelect').selectedOptions).map(function(opt){ return opt.value; });
 
     var payload = {
       name: formData.get('name'),
@@ -767,7 +748,7 @@ function initNotifyEvents() {
       chat_id: formData.get('chat_id') || '',
       template: formData.get('template') || '',
       extra_params: {},
-      room_ids: roomIds
+      room_ids: selectedRoomIds
     };
     if (protocol === 'telegram') {
       payload.receiver_key = 'chat_id';
@@ -776,45 +757,34 @@ function initNotifyEvents() {
       payload.receiver_key = 'chat_id';
       payload.message_key = 'text';
     }
-    var btn = form.querySelector('button[type="submit"]');
-    btn.disabled = true;
-    btn.innerHTML = '提交中...';
-    axios.post('/api/notify-configs', payload)
-      .then(function() {
-        showMessage('配置添加成功', 'info');
-        renderConfigs();
-        form.reset();
-        updateAddForm();
-        document.getElementById('roomIdsInput').value = '';
-      })
-      .catch(function(e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        showMessage('添加失败: ' + errMsg, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = '添加配置';
-      });
+    try {
+      await axios.post('/api/notify-configs', payload);
+      showMessage('配置添加成功', 'info');
+      await renderConfigs();
+      form.reset();
+      updateAddForm();
+      document.getElementById('roomIdsSelect').selectedIndex = -1;
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('添加失败: ' + errMsg, 'error');
+    }
   });
 
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', async function(e) {
     var btn = closest(e.target, '.test-btn');
     if (btn) {
       var id = btn.dataset.id;
       btn.disabled = true;
       btn.textContent = '测试中...';
-      axios.post('/api/notify-configs/test', { id: id })
-        .then(function(res) {
-          showMessage(res.data.message || '测试成功', 'info');
-        })
-        .catch(function(e) {
-          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-          showMessage('测试失败: ' + errMsg, 'error');
-        })
-        .finally(function() {
-          btn.disabled = false;
-          btn.textContent = '测试';
-        });
+      try {
+        var res = await axios.post('/api/notify-configs/test', { id: id });
+        showMessage(res.data.message || '测试成功', 'info');
+      } catch (e) {
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('测试失败: ' + errMsg, 'error');
+      }
+      btn.disabled = false;
+      btn.textContent = '测试';
       return;
     }
     var toggleBtn = closest(e.target, '.toggle-btn');
@@ -822,74 +792,75 @@ function initNotifyEvents() {
       var id = toggleBtn.dataset.id;
       toggleBtn.disabled = true;
       toggleBtn.textContent = '切换中...';
-      axios.post('/api/notify-configs/toggle', { id: id })
-        .then(function() {
-          showMessage('切换成功', 'info');
-          renderConfigs();
-        })
-        .catch(function(e) {
-          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-          showMessage('切换失败: ' + errMsg, 'error');
-          toggleBtn.disabled = false;
-          toggleBtn.textContent = '切换';
-        });
+      try {
+        await axios.post('/api/notify-configs/toggle', { id: id });
+        showMessage('切换成功', 'info');
+        await renderConfigs();
+      } catch (e) {
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('切换失败: ' + errMsg, 'error');
+        toggleBtn.disabled = false;
+        toggleBtn.textContent = '切换';
+      }
       return;
     }
     var deleteBtn = closest(e.target, '.delete-config-btn');
     if (deleteBtn) {
       var id = deleteBtn.dataset.id;
       if (!confirm('确定删除该配置吗？')) return;
-      axios.delete('/api/notify-configs', { data: { id: id } })
-        .then(function() {
-          showMessage('删除成功', 'info');
-          renderConfigs();
-        })
-        .catch(function(e) {
-          var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-          showMessage('删除失败: ' + errMsg, 'error');
-        });
+      try {
+        await axios.delete('/api/notify-configs', { data: { id: id } });
+        showMessage('删除成功', 'info');
+        await renderConfigs();
+      } catch (e) {
+        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        showMessage('删除失败: ' + errMsg, 'error');
+      }
       return;
     }
     var editBtn = closest(e.target, '.edit-config-btn');
     if (editBtn) {
       var id = editBtn.dataset.id;
-      axios.get('/api/notify-configs')
-        .then(function(res) {
-          var cfg = res.data.find(function(c) { return c.id === id; });
-          if (!cfg) { showMessage('配置不存在', 'error'); return; }
-          document.getElementById('editConfigId').value = cfg.id;
-          document.getElementById('editName').value = cfg.name;
-          document.getElementById('editProtocol').value = cfg.protocol;
-          var tokenVal = '';
-          if (cfg.protocol === 'telegram') {
-            tokenVal = cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1');
-          } else if (cfg.protocol === 'serverchan') {
-            var match = cfg.api_url.match(/https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send/);
-            if (match) tokenVal = match[1];
-          }
-          document.getElementById('editToken').value = tokenVal;
-          document.getElementById('editChatId').value = cfg.chat_id || '';
-          document.getElementById('editTemplate').value = cfg.template || '';
-          document.getElementById('editRoomIdsInput').value = (cfg.room_ids || []).join(', ');
-          updateEditForm();
-          var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
-          modal.show();
-        })
-        .catch(function(e) {
-          showMessage('加载配置详情失败: ' + e.message, 'error');
-        });
+      try {
+        var res = await axios.get('/api/notify-configs');
+        var cfg = res.data.find(function(c) { return c.id === id; });
+        if (!cfg) { showMessage('配置不存在', 'error'); return; }
+        document.getElementById('editConfigId').value = cfg.id;
+        document.getElementById('editName').value = cfg.name;
+        document.getElementById('editProtocol').value = cfg.protocol;
+        var tokenVal = '';
+        if (cfg.protocol === 'telegram') {
+          tokenVal = cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1');
+        } else if (cfg.protocol === 'serverchan') {
+          var match = cfg.api_url.match(/https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send/);
+          if (match) tokenVal = match[1];
+        }
+        document.getElementById('editToken').value = tokenVal;
+        document.getElementById('editChatId').value = cfg.chat_id || '';
+        document.getElementById('editTemplate').value = cfg.template || '';
+        var editRoomSelect = document.getElementById('editRoomIds');
+        var roomOptions = editRoomSelect.options;
+        var roomIds = cfg.room_ids || [];
+        for (var i = 0; i < roomOptions.length; i++) {
+          roomOptions[i].selected = roomIds.indexOf(roomOptions[i].value) !== -1;
+        }
+        updateEditForm();
+        var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
+        modal.show();
+      } catch (e) {
+        showMessage('加载配置详情失败: ' + e.message, 'error');
+      }
     }
   });
 
-  document.getElementById('editSaveBtn').addEventListener('click', function() {
+  document.getElementById('editSaveBtn').addEventListener('click', async function() {
     var id = document.getElementById('editConfigId').value;
     var name = document.getElementById('editName').value.trim();
     var protocol = document.getElementById('editProtocol').value;
     var token = document.getElementById('editToken').value.trim();
     var chatId = document.getElementById('editChatId').value.trim();
     var template = document.getElementById('editTemplate').value;
-    var roomIdsRaw = document.getElementById('editRoomIdsInput').value.trim();
-    var roomIds = roomIdsRaw ? roomIdsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
+    var roomIds = Array.from(document.getElementById('editRoomIds').selectedOptions).map(function(opt){ return opt.value; });
 
     if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
@@ -913,28 +884,25 @@ function initNotifyEvents() {
       receiver_key: 'chat_id',
       message_key: 'text'
     };
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = '保存中...';
-    axios.put('/api/notify-configs/' + id, payload)
-      .then(function() {
-        showMessage('配置更新成功', 'info');
-        bootstrap.Modal.getInstance(document.getElementById('editNotifyModal')).hide();
-        renderConfigs();
-      })
-      .catch(function(e) {
-        var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        showMessage('更新失败: ' + errMsg, 'error');
-      })
-      .finally(function() {
-        btn.disabled = false;
-        btn.textContent = '保存';
-      });
+    this.disabled = true;
+    this.textContent = '保存中...';
+    try {
+      await axios.put('/api/notify-configs/' + id, payload);
+      showMessage('配置更新成功', 'info');
+      bootstrap.Modal.getInstance(document.getElementById('editNotifyModal')).hide();
+      await renderConfigs();
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('更新失败: ' + errMsg, 'error');
+    }
+    this.disabled = false;
+    this.textContent = '保存';
   });
 }
 
-window.initPage = function() {
-  renderConfigs();
+window.initPage = async function() {
+  await loadRoomSelect();
+  await renderConfigs();
   initNotifyEvents();
 };
 `);
@@ -944,7 +912,7 @@ export default {
     const backendUrl = env.BACKEND_URL;
     if (!backendUrl) {
       return new Response(
-        JSON.stringify({ error: 'BACKEND_URL environment variable not set' }),
+        JSON.stringify({ error: 'BACKEND_URL 环境变量未设置' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -1003,7 +971,7 @@ export default {
       }
 
       if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location') || 'unknown';
+        const location = response.headers.get('location') || '未知';
         console.error('[Proxy] Redirect detected:', { status: response.status, location, target });
         return new Response(
           JSON.stringify({
@@ -1073,7 +1041,5 @@ export default {
     }
 
     return new Response('Not Found', { status: 404 });
-  },
-  async scheduled(event, env) {
   }
 };
