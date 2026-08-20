@@ -350,10 +350,9 @@ async function sendNotification(text, env, extra) {
   }
   let success = false;
   for (const config of enabled) {
-    if (config.room_ids && Array.isArray(config.room_ids) && config.room_ids.length > 0) {
-      if (!roomId || !config.room_ids.includes(roomId)) {
-        continue;
-      }
+    const ids = config.room_ids || [];
+    if (ids.length > 0 && roomId && !ids.includes(roomId)) {
+      continue;
     }
     const result = await sendNotificationToConfig(config, text, extra);
     if (result.success) success = true;
@@ -489,7 +488,7 @@ async function getNotifyConfigs(env) {
 
 async function addNotifyConfig(env, config) {
   const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-  const roomIds = config.room_ids || [];
+  const roomIds = Array.isArray(config.room_ids) ? config.room_ids : [];
   await env.DB.prepare(`INSERT INTO notify_configs (id, name, protocol, api_url, chat_id, receiver_key, message_key, template, extra_params, enabled, room_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     id, config.name, config.protocol, config.api_url, config.chat_id || '',
     config.receiver_key || 'chat_id', config.message_key || 'text',
@@ -517,7 +516,7 @@ async function toggleNotifyConfig(env, id) {
 }
 
 async function updateNotifyConfig(env, id, config) {
-  const roomIds = config.room_ids || [];
+  const roomIds = Array.isArray(config.room_ids) ? config.room_ids : [];
   await env.DB.prepare(
     `UPDATE notify_configs SET name=?, protocol=?, api_url=?, chat_id=?, receiver_key=?, message_key=?, template=?, extra_params=?, room_ids=? WHERE id=?`
   ).bind(
@@ -868,7 +867,12 @@ async function handleRequest(request, env) {
       if (!config) return jsonResponse({ error: '配置不存在' }, 404, request, env);
       const roomList = await getRoomList(env);
       if (!roomList.length) return jsonResponse({ error: '房间列表为空' }, 400, request, env);
-      const roomId = toRoomId(roomList[Math.floor(Math.random() * roomList.length)].room_id);
+      let roomId = null;
+      if (config.room_ids && config.room_ids.length > 0) {
+        roomId = config.room_ids[0];
+      } else {
+        roomId = toRoomId(roomList[Math.floor(Math.random() * roomList.length)].room_id);
+      }
       try {
         const current = await fetchLiveStatus(roomId, env);
         if (!current) return jsonResponse({ error: '获取直播状态失败' }, 500, request, env);
