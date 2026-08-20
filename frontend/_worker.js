@@ -295,7 +295,8 @@ async function renderRooms() {
     }
     var html = '';
     for (var i = 0; i < rooms.length; i++) {
-      var id = rooms[i];
+      var room = rooms[i];
+      var id = room.room_id;
       var state = states[id] || {};
       var isLive = state.state === 'LIVE';
       var dotClass = isLive ? 'live' : 'offline';
@@ -562,18 +563,72 @@ const NOTIFY_PAGE = dashboardTemplate(`
     </div>
   </div>
 </div>
+<!-- 编辑模态框 -->
+<div class="modal fade" id="editNotifyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">编辑通知配置</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <form id="editNotifyForm" class="row g-3">
+          <input type="hidden" id="editConfigId">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">名称</label>
+            <input type="text" id="editName" class="form-control" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">协议</label>
+            <select id="editProtocol" class="form-select">
+              <option value="telegram">Telegram</option>
+              <option value="serverchan">Server酱</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">令牌</label>
+            <input type="text" id="editToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold" id="editReceiverLabel">接收者 ID / 标题</label>
+            <input type="text" id="editChatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
+            <select id="editRoomIds" class="form-select" multiple style="height:120px;"></select>
+            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">通知模板</label>
+            <textarea id="editTemplate" class="form-control" rows="5"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" id="editSaveBtn" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
 `, 'notify', `
+var allRooms = [];
+
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
-    var rooms = res.data.rooms || [];
+    allRooms = res.data.rooms || [];
     var select = document.getElementById('roomIdsSelect');
+    var editSelect = document.getElementById('editRoomIds');
     select.innerHTML = '';
-    rooms.forEach(function(id) {
+    editSelect.innerHTML = '';
+    allRooms.forEach(function(room) {
+      var id = room.room_id;
       var opt = document.createElement('option');
       opt.value = id;
       opt.textContent = '房间 ' + id;
       select.appendChild(opt);
+      var opt2 = document.createElement('option');
+      opt2.value = id;
+      opt2.textContent = '房间 ' + id;
+      editSelect.appendChild(opt2);
     });
   } catch (e) {
     console.error('加载房间列表失败', e);
@@ -597,7 +652,7 @@ async function renderConfigs() {
       var statusColor = cfg.enabled ? 'success' : 'secondary';
       var roomIds = cfg.room_ids || [];
       var roomDisplay = roomIds.length ? roomIds.map(function(id){ return '房间'+id; }).join(', ') : '全部';
-      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
+      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="edit-config-btn btn btn-sm btn-outline-info me-1" data-id="' + cfg.id + '">编辑</button><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
     }
     tbody.innerHTML = html;
   } catch (e) {
@@ -627,9 +682,28 @@ function updateNotifyForm() {
   }
 }
 
+function updateEditForm(protocol) {
+  var tokenInput = document.getElementById('editToken');
+  var receiverLabel = document.getElementById('editReceiverLabel');
+  var chatId = document.getElementById('editChatId');
+  if (protocol === 'telegram') {
+    tokenInput.placeholder = '请输入 Bot Token';
+    receiverLabel.textContent = '接收者 ID (chat_id)';
+    chatId.placeholder = '数字 ID';
+  } else if (protocol === 'serverchan') {
+    tokenInput.placeholder = '请输入 SendKey';
+    receiverLabel.textContent = '消息标题 (可选)';
+    chatId.placeholder = '留空则使用默认标题';
+  }
+}
+
 function initNotifyEvents() {
   document.getElementById('protocolSelect').addEventListener('change', updateNotifyForm);
   updateNotifyForm();
+
+  document.getElementById('editProtocol').addEventListener('change', function() {
+    updateEditForm(this.value);
+  });
 
   document.getElementById('addNotifyForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -726,7 +800,83 @@ function initNotifyEvents() {
         var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
         showMessage('删除失败: ' + errMsg, 'error');
       }
+      return;
     }
+    var editBtn = closest(e.target, '.edit-config-btn');
+    if (editBtn) {
+      var id = editBtn.dataset.id;
+      try {
+        var res = await axios.get('/api/notify-configs');
+        var cfg = res.data.find(function(c) { return c.id === id; });
+        if (!cfg) { showMessage('配置不存在', 'error'); return; }
+        document.getElementById('editConfigId').value = cfg.id;
+        document.getElementById('editName').value = cfg.name;
+        document.getElementById('editProtocol').value = cfg.protocol;
+        document.getElementById('editToken').value = cfg.api_url ? cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1') : '';
+        if (cfg.protocol === 'serverchan') {
+          var match = cfg.api_url.match(/https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send/);
+          if (match) document.getElementById('editToken').value = match[1];
+        }
+        document.getElementById('editChatId').value = cfg.chat_id || '';
+        document.getElementById('editTemplate').value = cfg.template || '';
+        var editRoomSelect = document.getElementById('editRoomIds');
+        var roomOptions = editRoomSelect.options;
+        for (var i = 0; i < roomOptions.length; i++) {
+          roomOptions[i].selected = (cfg.room_ids || []).indexOf(roomOptions[i].value) !== -1;
+        }
+        updateEditForm(cfg.protocol);
+        var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
+        modal.show();
+      } catch (e) {
+        showMessage('加载配置详情失败: ' + e.message, 'error');
+      }
+    }
+  });
+
+  document.getElementById('editSaveBtn').addEventListener('click', async function() {
+    var id = document.getElementById('editConfigId').value;
+    var name = document.getElementById('editName').value.trim();
+    var protocol = document.getElementById('editProtocol').value;
+    var token = document.getElementById('editToken').value.trim();
+    var chatId = document.getElementById('editChatId').value.trim();
+    var template = document.getElementById('editTemplate').value;
+    var roomIds = Array.from(document.getElementById('editRoomIds').selectedOptions).map(function(opt){ return opt.value; });
+
+    if (!name) { showMessage('请输入名称', 'error'); return; }
+    if (!token) { showMessage('请输入令牌', 'error'); return; }
+    var apiUrl = '';
+    if (protocol === 'telegram') {
+      apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+    } else if (protocol === 'serverchan') {
+      apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
+    } else {
+      showMessage('不支持的协议', 'error');
+      return;
+    }
+    var payload = {
+      name: name,
+      protocol: protocol,
+      api_url: apiUrl,
+      chat_id: chatId,
+      template: template,
+      room_ids: roomIds,
+      extra_params: {},
+      receiver_key: 'chat_id',
+      message_key: 'text'
+    };
+    this.disabled = true;
+    this.textContent = '保存中...';
+    try {
+      await axios.put('/api/notify-configs/' + id, payload);
+      showMessage('配置更新成功', 'info');
+      bootstrap.Modal.getInstance(document.getElementById('editNotifyModal')).hide();
+      await renderConfigs();
+    } catch (e) {
+      var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+      showMessage('更新失败: ' + errMsg, 'error');
+    }
+    this.disabled = false;
+    this.textContent = '保存';
   });
 }
 
