@@ -95,6 +95,12 @@ function normalizeRooms(rooms) {
   });
 }
 
+// 解析房间输入：支持英文逗号、中文逗号、空格分隔，自动过滤空值
+function parseRoomIds(input) {
+  if (!input) return [];
+  return String(input).split(/[,，\s]+/).map(s => s.trim()).filter(s => s !== '');
+}
+
 axios.defaults.baseURL = '';
 axios.defaults.withCredentials = true;
 axios.defaults.timeout = 10000;
@@ -514,6 +520,7 @@ window.initPage = async function() {
 };
 `);
 
+// ========== 通知配置页面（重构版） ==========
 const NOTIFY_PAGE = dashboardTemplate(`
 <div class="row g-4">
   <div class="col-lg-6">
@@ -523,37 +530,44 @@ const NOTIFY_PAGE = dashboardTemplate(`
         <form id="addNotifyForm" class="row g-3">
           <div class="col-md-6">
             <label class="form-label fw-semibold">名称</label>
-            <input type="text" name="name" class="form-control" placeholder="如：我的Telegram" required>
+            <input type="text" name="name" id="addName" class="form-control" placeholder="如：我的Telegram" required>
           </div>
           <div class="col-md-6">
             <label class="form-label fw-semibold">协议</label>
-            <select name="protocol" id="protocolSelect" class="form-select">
+            <select name="protocol" id="addProtocol" class="form-select">
               <option value="telegram">Telegram</option>
               <option value="serverchan">Server酱</option>
             </select>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">令牌</label>
-            <input type="text" id="tokenInput" class="form-control" placeholder="Bot Token 或 SendKey" required>
-            <small id="tokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small>
+            <input type="text" id="addToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
+            <small id="addTokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small>
           </div>
-          <input type="hidden" id="apiUrl" name="api_url">
-          <div class="col-12" id="receiverField">
-            <label class="form-label fw-semibold" id="receiverLabel">接收者 ID / 标题</label>
-            <input type="text" name="chat_id" id="chatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）">
-            <small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
+          <input type="hidden" id="addApiUrl" name="api_url">
+          <!-- 接收者 ID（Telegram） -->
+          <div class="col-12" id="addReceiverGroup">
+            <label class="form-label fw-semibold" id="addReceiverLabel">接收者 ID (chat_id)</label>
+            <input type="text" id="addReceiverId" class="form-control" placeholder="数字 ID 或 @username">
+            <small id="addReceiverHelp" class="text-muted">Telegram 必填接收者 ID</small>
+          </div>
+          <!-- 消息标题（Server酱） -->
+          <div class="col-12" id="addTitleGroup" style="display:none;">
+            <label class="form-label fw-semibold">消息标题（可选）</label>
+            <input type="text" id="addTitle" class="form-control" placeholder="留空则使用默认标题">
+            <small class="text-muted">作为推送消息的标题，不填则使用 "B站直播通知"</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
-            <select name="room_ids" id="roomIdsSelect" class="form-select" multiple style="height:120px;"></select>
-            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+            <label class="form-label fw-semibold">指定推送房间（逗号或空格分隔）</label>
+            <input type="text" id="addRoomIdsInput" class="form-control" placeholder="例如：123456, 789012  或 123456 789012">
+            <small class="text-muted">留空则推送所有房间；多个房间用逗号或空格分隔</small>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板（可选）</label>
-            <textarea name="template" id="templateArea" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
+            <textarea name="template" id="addTemplate" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
           </div>
           <div class="col-12">
-            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> 添加配置</button>
+            <button type="button" id="addSubmitBtn" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> 添加配置</button>
           </div>
         </form>
       </div>
@@ -575,6 +589,7 @@ const NOTIFY_PAGE = dashboardTemplate(`
     </div>
   </div>
 </div>
+<!-- 编辑模态框 -->
 <div class="modal fade" id="editNotifyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -597,15 +612,22 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <label class="form-label fw-semibold">令牌</label>
             <input type="text" id="editToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
           </div>
-          <div class="col-12" id="editReceiverField">
-            <label class="form-label fw-semibold" id="editReceiverLabel">接收者 ID / 标题</label>
-            <input type="text" id="editChatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）">
-            <small id="editChatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
+          <!-- 接收者 ID（Telegram） -->
+          <div class="col-12" id="editReceiverGroup">
+            <label class="form-label fw-semibold" id="editReceiverLabel">接收者 ID (chat_id)</label>
+            <input type="text" id="editReceiverId" class="form-control" placeholder="数字 ID 或 @username">
+            <small id="editReceiverHelp" class="text-muted">Telegram 必填接收者 ID</small>
+          </div>
+          <!-- 消息标题（Server酱） -->
+          <div class="col-12" id="editTitleGroup" style="display:none;">
+            <label class="form-label fw-semibold">消息标题（可选）</label>
+            <input type="text" id="editTitle" class="form-control" placeholder="留空则使用默认标题">
+            <small class="text-muted">作为推送消息的标题，不填则使用 "B站直播通知"</small>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
-            <select id="editRoomIds" class="form-select" multiple style="height:120px;"></select>
-            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+            <label class="form-label fw-semibold">指定推送房间（逗号或空格分隔）</label>
+            <input type="text" id="editRoomIdsInput" class="form-control" placeholder="例如：123456, 789012  或 123456 789012">
+            <small class="text-muted">留空则推送所有房间；多个房间用逗号或空格分隔</small>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">通知模板</label>
@@ -623,32 +645,74 @@ const NOTIFY_PAGE = dashboardTemplate(`
 `, 'notify', `
 var allRooms = [];
 
+// ---------- 添加表单 ----------
+function updateAddForm() {
+  var protocol = document.getElementById('addProtocol').value;
+  var receiverGroup = document.getElementById('addReceiverGroup');
+  var titleGroup = document.getElementById('addTitleGroup');
+  var tokenInput = document.getElementById('addToken');
+  var tokenHelp = document.getElementById('addTokenHelp');
+  var receiverLabel = document.getElementById('addReceiverLabel');
+  var receiverHelp = document.getElementById('addReceiverHelp');
+  if (protocol === 'telegram') {
+    receiverGroup.style.display = 'block';
+    titleGroup.style.display = 'none';
+    tokenInput.placeholder = '请输入 Bot Token';
+    tokenHelp.textContent = 'Telegram Bot Token';
+    receiverLabel.textContent = '接收者 ID (chat_id)';
+    receiverHelp.textContent = '必填，消息接收者的 chat_id';
+    document.getElementById('addReceiverId').required = true;
+    document.getElementById('addTitle').required = false;
+  } else if (protocol === 'serverchan') {
+    receiverGroup.style.display = 'none';
+    titleGroup.style.display = 'block';
+    tokenInput.placeholder = '请输入 SendKey';
+    tokenHelp.textContent = 'Server酱 SendKey，从 https://sct.ftqq.com/ 获取';
+    document.getElementById('addReceiverId').required = false;
+    document.getElementById('addTitle').required = false;
+  }
+}
+
+// ---------- 编辑表单 ----------
+function updateEditForm() {
+  var protocol = document.getElementById('editProtocol').value;
+  var receiverGroup = document.getElementById('editReceiverGroup');
+  var titleGroup = document.getElementById('editTitleGroup');
+  var tokenInput = document.getElementById('editToken');
+  var receiverLabel = document.getElementById('editReceiverLabel');
+  var receiverHelp = document.getElementById('editReceiverHelp');
+  if (protocol === 'telegram') {
+    receiverGroup.style.display = 'block';
+    titleGroup.style.display = 'none';
+    tokenInput.placeholder = '请输入 Bot Token';
+    receiverLabel.textContent = '接收者 ID (chat_id)';
+    receiverHelp.textContent = '必填，消息接收者的 chat_id';
+    document.getElementById('editReceiverId').required = true;
+    document.getElementById('editTitle').required = false;
+  } else if (protocol === 'serverchan') {
+    receiverGroup.style.display = 'none';
+    titleGroup.style.display = 'block';
+    tokenInput.placeholder = '请输入 SendKey';
+    receiverLabel.textContent = '消息标题 (可选)';
+    document.getElementById('editReceiverId').required = false;
+    document.getElementById('editTitle').required = false;
+  }
+}
+
+// ---------- 加载房间列表到页面（已无下拉，保留备用） ----------
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
     var rawRooms = res.data.rooms;
     var rooms = normalizeRooms(rawRooms);
     allRooms = rooms;
-    var select = document.getElementById('roomIdsSelect');
-    var editSelect = document.getElementById('editRoomIds');
-    select.innerHTML = '';
-    editSelect.innerHTML = '';
-    rooms.forEach(function(room) {
-      var id = room.room_id;
-      var opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = '房间 ' + id;
-      select.appendChild(opt);
-      var opt2 = document.createElement('option');
-      opt2.value = id;
-      opt2.textContent = '房间 ' + id;
-      editSelect.appendChild(opt2);
-    });
+    // 不再填充下拉菜单，因为改为手动输入
   } catch (e) {
     console.error('加载房间列表失败', e);
   }
 }
 
+// ---------- 渲染配置列表 ----------
 async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
   try {
@@ -665,7 +729,7 @@ async function renderConfigs() {
       var status = cfg.enabled ? '启用' : '禁用';
       var statusColor = cfg.enabled ? 'success' : 'secondary';
       var roomIds = cfg.room_ids || [];
-      var roomDisplay = roomIds.length ? roomIds.map(function(id){ return '房间'+id; }).join(', ') : '全部';
+      var roomDisplay = roomIds.length ? roomIds.join(', ') : '全部';
       html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="edit-config-btn btn btn-sm btn-outline-info me-1" data-id="' + cfg.id + '">编辑</button><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
     }
     tbody.innerHTML = html;
@@ -674,61 +738,34 @@ async function renderConfigs() {
   }
 }
 
-function updateAddForm() {
-  var protocol = document.getElementById('protocolSelect').value;
-  var tokenInput = document.getElementById('tokenInput');
-  var tokenHelp = document.getElementById('tokenHelp');
-  var receiverLabel = document.getElementById('receiverLabel');
-  var chatId = document.getElementById('chatId');
-  var chatHelp = document.getElementById('chatHelp');
-  if (protocol === 'telegram') {
-    tokenInput.placeholder = '请输入 Bot Token';
-    tokenHelp.textContent = 'Telegram Bot Token';
-    receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID 或 @username';
-    chatHelp.textContent = '必填，消息接收者的 chat_id';
-  } else if (protocol === 'serverchan') {
-    tokenInput.placeholder = '请输入 SendKey';
-    tokenHelp.textContent = 'Server酱 SendKey，从 https://sct.ftqq.com/ 获取';
-    receiverLabel.textContent = '消息标题 (可选)';
-    chatId.placeholder = '留空则使用默认标题';
-    chatHelp.textContent = '作为推送消息的标题，不填则使用 "B站直播通知"';
-  }
-}
-
-function updateEditForm() {
-  var protocol = document.getElementById('editProtocol').value;
-  var tokenInput = document.getElementById('editToken');
-  var receiverLabel = document.getElementById('editReceiverLabel');
-  var chatId = document.getElementById('editChatId');
-  var chatHelp = document.getElementById('editChatHelp');
-  if (protocol === 'telegram') {
-    tokenInput.placeholder = '请输入 Bot Token';
-    receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID 或 @username';
-    chatHelp.textContent = '必填，消息接收者的 chat_id';
-  } else if (protocol === 'serverchan') {
-    tokenInput.placeholder = '请输入 SendKey';
-    receiverLabel.textContent = '消息标题 (可选)';
-    chatId.placeholder = '留空则使用默认标题';
-    chatHelp.textContent = '作为推送消息的标题，不填则使用 "B站直播通知"';
-  }
-}
-
+// ---------- 初始化事件 ----------
 function initNotifyEvents() {
-  document.getElementById('protocolSelect').addEventListener('change', updateAddForm);
-  document.getElementById('editProtocol').addEventListener('change', updateEditForm);
+  // 添加表单：协议切换
+  document.getElementById('addProtocol').addEventListener('change', updateAddForm);
   updateAddForm();
+
+  // 编辑表单：协议切换
+  document.getElementById('editProtocol').addEventListener('change', updateEditForm);
+  // 初始化编辑表单（默认显示Telegram）
   updateEditForm();
 
-  document.getElementById('addNotifyForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    var form = this;
-    var protocol = document.getElementById('protocolSelect').value;
-    var token = document.getElementById('tokenInput').value.trim();
+  // 添加提交按钮
+  document.getElementById('addSubmitBtn').addEventListener('click', async function() {
+    var form = document.getElementById('addNotifyForm');
+    var protocol = document.getElementById('addProtocol').value;
+    var name = document.getElementById('addName').value.trim();
+    var token = document.getElementById('addToken').value.trim();
+    var template = document.getElementById('addTemplate').value;
+    var roomIdsInput = document.getElementById('addRoomIdsInput').value;
+    var receiverId = document.getElementById('addReceiverId').value.trim();
+    var title = document.getElementById('addTitle').value.trim();
+
+    if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
+
     var apiUrl = '';
     if (protocol === 'telegram') {
+      if (!receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
       apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
     } else if (protocol === 'serverchan') {
       apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
@@ -736,40 +773,40 @@ function initNotifyEvents() {
       showMessage('不支持的协议', 'error');
       return;
     }
-    document.getElementById('apiUrl').value = apiUrl;
 
-    var formData = new FormData(form);
-    var selectedRoomIds = Array.from(document.getElementById('roomIdsSelect').selectedOptions).map(function(opt){ return opt.value; });
+    var chatId = (protocol === 'telegram') ? receiverId : title;
+    var roomIds = parseRoomIds(roomIdsInput);
 
     var payload = {
-      name: formData.get('name'),
+      name: name,
       protocol: protocol,
       api_url: apiUrl,
-      chat_id: formData.get('chat_id') || '',
-      template: formData.get('template') || '',
+      chat_id: chatId,
+      template: template || '',
       extra_params: {},
-      room_ids: selectedRoomIds
+      room_ids: roomIds,
+      receiver_key: 'chat_id',
+      message_key: 'text'
     };
-    if (protocol === 'telegram') {
-      payload.receiver_key = 'chat_id';
-      payload.message_key = 'text';
-    } else if (protocol === 'serverchan') {
-      payload.receiver_key = 'chat_id';
-      payload.message_key = 'text';
-    }
+
+    this.disabled = true;
+    this.textContent = '提交中...';
     try {
       await axios.post('/api/notify-configs', payload);
       showMessage('配置添加成功', 'info');
       await renderConfigs();
       form.reset();
       updateAddForm();
-      document.getElementById('roomIdsSelect').selectedIndex = -1;
+      document.getElementById('addRoomIdsInput').value = '';
     } catch (e) {
       var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
       showMessage('添加失败: ' + errMsg, 'error');
     }
+    this.disabled = false;
+    this.textContent = '添加配置';
   });
 
+  // 全局事件：测试、切换、删除、编辑
   document.addEventListener('click', async function(e) {
     var btn = closest(e.target, '.test-btn');
     if (btn) {
@@ -825,9 +862,11 @@ function initNotifyEvents() {
         var res = await axios.get('/api/notify-configs');
         var cfg = res.data.find(function(c) { return c.id === id; });
         if (!cfg) { showMessage('配置不存在', 'error'); return; }
+
         document.getElementById('editConfigId').value = cfg.id;
         document.getElementById('editName').value = cfg.name;
         document.getElementById('editProtocol').value = cfg.protocol;
+        // 令牌回显
         var tokenVal = '';
         if (cfg.protocol === 'telegram') {
           tokenVal = cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1');
@@ -836,14 +875,22 @@ function initNotifyEvents() {
           if (match) tokenVal = match[1];
         }
         document.getElementById('editToken').value = tokenVal;
-        document.getElementById('editChatId').value = cfg.chat_id || '';
-        document.getElementById('editTemplate').value = cfg.template || '';
-        var editRoomSelect = document.getElementById('editRoomIds');
-        var roomOptions = editRoomSelect.options;
-        var roomIds = cfg.room_ids || [];
-        for (var i = 0; i < roomOptions.length; i++) {
-          roomOptions[i].selected = roomIds.indexOf(roomOptions[i].value) !== -1;
+
+        // 根据协议回填接收者ID或标题
+        if (cfg.protocol === 'telegram') {
+          document.getElementById('editReceiverId').value = cfg.chat_id || '';
+          document.getElementById('editTitle').value = '';
+        } else {
+          document.getElementById('editTitle').value = cfg.chat_id || '';
+          document.getElementById('editReceiverId').value = '';
         }
+
+        document.getElementById('editTemplate').value = cfg.template || '';
+        // 房间列表回显
+        var roomIds = cfg.room_ids || [];
+        document.getElementById('editRoomIdsInput').value = roomIds.join(', ');
+
+        // 更新编辑表单的显示状态
         updateEditForm();
         var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
         modal.show();
@@ -853,19 +900,23 @@ function initNotifyEvents() {
     }
   });
 
+  // 编辑保存按钮
   document.getElementById('editSaveBtn').addEventListener('click', async function() {
     var id = document.getElementById('editConfigId').value;
     var name = document.getElementById('editName').value.trim();
     var protocol = document.getElementById('editProtocol').value;
     var token = document.getElementById('editToken').value.trim();
-    var chatId = document.getElementById('editChatId').value.trim();
     var template = document.getElementById('editTemplate').value;
-    var roomIds = Array.from(document.getElementById('editRoomIds').selectedOptions).map(function(opt){ return opt.value; });
+    var roomIdsInput = document.getElementById('editRoomIdsInput').value;
+    var receiverId = document.getElementById('editReceiverId').value.trim();
+    var title = document.getElementById('editTitle').value.trim();
 
     if (!name) { showMessage('请输入名称', 'error'); return; }
     if (!token) { showMessage('请输入令牌', 'error'); return; }
+
     var apiUrl = '';
     if (protocol === 'telegram') {
+      if (!receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
       apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
     } else if (protocol === 'serverchan') {
       apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
@@ -873,17 +924,22 @@ function initNotifyEvents() {
       showMessage('不支持的协议', 'error');
       return;
     }
+
+    var chatId = (protocol === 'telegram') ? receiverId : title;
+    var roomIds = parseRoomIds(roomIdsInput);
+
     var payload = {
       name: name,
       protocol: protocol,
       api_url: apiUrl,
       chat_id: chatId,
-      template: template,
+      template: template || '',
       room_ids: roomIds,
       extra_params: {},
       receiver_key: 'chat_id',
       message_key: 'text'
     };
+
     this.disabled = true;
     this.textContent = '保存中...';
     try {
