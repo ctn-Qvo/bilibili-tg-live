@@ -519,7 +519,6 @@ window.initPage = async function() {
 };
 `);
 
-// ==================== 通知配置页面（最终版） ====================
 const NOTIFY_PAGE = dashboardTemplate(`
 <div class="row g-4">
   <div class="col-lg-6">
@@ -543,13 +542,11 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <input type="text" id="addToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
             <small id="addTokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small>
           </div>
-          <!-- 接收者 ID（Telegram） -->
           <div class="col-12" id="addReceiverGroup">
             <label class="form-label fw-semibold" id="addReceiverLabel">接收者 ID (chat_id)</label>
             <input type="text" id="addReceiverId" class="form-control" placeholder="数字 ID 或 @username">
             <small id="addReceiverHelp" class="text-muted">Telegram 必填接收者 ID</small>
           </div>
-          <!-- 消息标题（Server酱） -->
           <div class="col-12" id="addTitleGroup" style="display:none;">
             <label class="form-label fw-semibold">消息标题（可选）</label>
             <input type="text" id="addTitle" class="form-control" placeholder="留空则使用默认标题">
@@ -587,7 +584,6 @@ const NOTIFY_PAGE = dashboardTemplate(`
     </div>
   </div>
 </div>
-<!-- 编辑模态框 -->
 <div class="modal fade" id="editNotifyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -610,13 +606,11 @@ const NOTIFY_PAGE = dashboardTemplate(`
             <label class="form-label fw-semibold">令牌</label>
             <input type="text" id="editToken" class="form-control" placeholder="Bot Token 或 SendKey" required>
           </div>
-          <!-- 接收者 ID（Telegram） -->
           <div class="col-12" id="editReceiverGroup">
             <label class="form-label fw-semibold" id="editReceiverLabel">接收者 ID (chat_id)</label>
             <input type="text" id="editReceiverId" class="form-control" placeholder="数字 ID 或 @username">
             <small id="editReceiverHelp" class="text-muted">Telegram 必填接收者 ID</small>
           </div>
-          <!-- 消息标题（Server酱） -->
           <div class="col-12" id="editTitleGroup" style="display:none;">
             <label class="form-label fw-semibold">消息标题（可选）</label>
             <input type="text" id="editTitle" class="form-control" placeholder="留空则使用默认标题">
@@ -641,7 +635,6 @@ const NOTIFY_PAGE = dashboardTemplate(`
   </div>
 </div>
 `, 'notify', `
-// ========== 切换UI函数（添加表单） ==========
 function updateAddForm() {
   var protocol = document.getElementById('addProtocol').value;
   var receiverGroup = document.getElementById('addReceiverGroup');
@@ -660,7 +653,7 @@ function updateAddForm() {
     receiverHelp.textContent = '必填，消息接收者的 chat_id';
     document.getElementById('addReceiverId').required = true;
     document.getElementById('addTitle').required = false;
-  } else { // serverchan
+  } else {
     receiverGroup.style.display = 'none';
     titleGroup.style.display = 'block';
     tokenInput.placeholder = '请输入 SendKey';
@@ -670,7 +663,6 @@ function updateAddForm() {
   }
 }
 
-// ========== 切换UI函数（编辑表单） ==========
 function updateEditForm() {
   var protocol = document.getElementById('editProtocol').value;
   var receiverGroup = document.getElementById('editReceiverGroup');
@@ -697,34 +689,29 @@ function updateEditForm() {
   }
 }
 
-// ========== 安全提取 Token ==========
 function extractToken(apiUrl, protocol) {
   if (!apiUrl) return '';
   try {
     if (protocol === 'telegram') {
-      var match = apiUrl.match(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/);
+      var match = apiUrl.match(/^https:\\/\\/api\\.telegram\\.org\\/bot([^\\/]+)\\/sendMessage$/);
       return match ? match[1] : '';
     } else if (protocol === 'serverchan') {
-      var match = apiUrl.match(/^https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send$/);
+      var match = apiUrl.match(/^https:\\/\\/sctapi\\.ftqq\\.com\\/([^.]+)\\.send$/);
       return match ? match[1] : '';
     }
   } catch(e) { return ''; }
   return '';
 }
 
-// ========== 加载房间列表（内部使用） ==========
 var allRooms = [];
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
     var rawRooms = res.data.rooms;
     allRooms = normalizeRooms(rawRooms);
-  } catch (e) {
-    console.error('加载房间列表失败', e);
-  }
+  } catch (e) { console.error('加载房间列表失败', e); }
 }
 
-// ========== 渲染配置列表 ==========
 async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
   try {
@@ -750,60 +737,51 @@ async function renderConfigs() {
   }
 }
 
-// ========== 初始化事件 ==========
 function initNotifyEvents() {
-  // 添加表单协议切换
   document.getElementById('addProtocol').addEventListener('change', updateAddForm);
-  // 编辑表单协议切换
   document.getElementById('editProtocol').addEventListener('change', updateEditForm);
-  // 初始化显示
   updateAddForm();
   updateEditForm();
 
-  // 添加按钮
   document.getElementById('addSubmitBtn').addEventListener('click', async function(e) {
     e.preventDefault();
     var btn = this;
-    var protocol = document.getElementById('addProtocol').value;
-    var name = document.getElementById('addName').value.trim();
-    var token = document.getElementById('addToken').value.trim();
-    var template = document.getElementById('addTemplate').value;
-    var roomIdsInput = document.getElementById('addRoomIdsInput').value;
-    var receiverId = document.getElementById('addReceiverId').value.trim();
-    var title = document.getElementById('addTitle').value.trim();
-
-    if (!name) { showMessage('请输入名称', 'error'); return; }
-    if (!token) { showMessage('请输入令牌', 'error'); return; }
-    if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
-
-    var apiUrl = '';
-    if (protocol === 'telegram') {
-      apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
-    } else if (protocol === 'serverchan') {
-      apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
-    } else {
-      showMessage('不支持的协议', 'error');
-      return;
-    }
-
-    var chatId = (protocol === 'telegram') ? receiverId : title;
-    var roomIds = parseRoomIds(roomIdsInput);
-
-    var payload = {
-      name: name,
-      protocol: protocol,
-      api_url: apiUrl,
-      chat_id: chatId,
-      template: template || '',
-      extra_params: {},
-      room_ids: roomIds,
-      receiver_key: 'chat_id',
-      message_key: 'text'
-    };
-
     btn.disabled = true;
     btn.textContent = '提交中...';
+
     try {
+      var protocol = document.getElementById('addProtocol').value;
+      var name = document.getElementById('addName').value.trim();
+      var token = document.getElementById('addToken').value.trim();
+      var template = document.getElementById('addTemplate').value;
+      var roomIdsInput = document.getElementById('addRoomIdsInput').value;
+      var receiverId = document.getElementById('addReceiverId').value.trim();
+      var title = document.getElementById('addTitle').value.trim();
+
+      if (!name) { showMessage('请输入名称', 'error'); btn.disabled=false; btn.textContent='添加配置'; return; }
+      if (!token) { showMessage('请输入令牌', 'error'); btn.disabled=false; btn.textContent='添加配置'; return; }
+      if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); btn.disabled=false; btn.textContent='添加配置'; return; }
+
+      var apiUrl = '';
+      if (protocol === 'telegram') apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+      else if (protocol === 'serverchan') apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
+      else { showMessage('不支持的协议', 'error'); btn.disabled=false; btn.textContent='添加配置'; return; }
+
+      var chatId = (protocol === 'telegram') ? receiverId : title;
+      var roomIds = parseRoomIds(roomIdsInput);
+
+      var payload = {
+        name: name,
+        protocol: protocol,
+        api_url: apiUrl,
+        chat_id: chatId,
+        template: template || '',
+        extra_params: {},
+        room_ids: roomIds,
+        receiver_key: 'chat_id',
+        message_key: 'text'
+      };
+
       await axios.post('/api/notify-configs', payload);
       showMessage('配置添加成功', 'info');
       await renderConfigs();
@@ -819,9 +797,7 @@ function initNotifyEvents() {
     }
   });
 
-  // 全局事件（测试、切换、删除、编辑）
   document.addEventListener('click', async function(e) {
-    // 测试
     var testBtn = closest(e.target, '.test-btn');
     if (testBtn) {
       var id = testBtn.dataset.id;
@@ -839,7 +815,6 @@ function initNotifyEvents() {
       return;
     }
 
-    // 切换
     var toggleBtn = closest(e.target, '.toggle-btn');
     if (toggleBtn) {
       var id = toggleBtn.dataset.id;
@@ -858,7 +833,6 @@ function initNotifyEvents() {
       return;
     }
 
-    // 删除
     var deleteBtn = closest(e.target, '.delete-config-btn');
     if (deleteBtn) {
       var id = deleteBtn.dataset.id;
@@ -874,7 +848,6 @@ function initNotifyEvents() {
       return;
     }
 
-    // 编辑
     var editBtn = closest(e.target, '.edit-config-btn');
     if (editBtn) {
       var id = editBtn.dataset.id;
@@ -910,51 +883,45 @@ function initNotifyEvents() {
     }
   });
 
-  // 编辑保存
   document.getElementById('editSaveBtn').addEventListener('click', async function(e) {
     e.preventDefault();
     var btn = this;
-    var id = document.getElementById('editConfigId').value;
-    var name = document.getElementById('editName').value.trim();
-    var protocol = document.getElementById('editProtocol').value;
-    var token = document.getElementById('editToken').value.trim();
-    var template = document.getElementById('editTemplate').value;
-    var roomIdsInput = document.getElementById('editRoomIdsInput').value;
-    var receiverId = document.getElementById('editReceiverId').value.trim();
-    var title = document.getElementById('editTitle').value.trim();
-
-    if (!name) { showMessage('请输入名称', 'error'); return; }
-    if (!token) { showMessage('请输入令牌', 'error'); return; }
-    if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); return; }
-
-    var apiUrl = '';
-    if (protocol === 'telegram') {
-      apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
-    } else if (protocol === 'serverchan') {
-      apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
-    } else {
-      showMessage('不支持的协议', 'error');
-      return;
-    }
-
-    var chatId = (protocol === 'telegram') ? receiverId : title;
-    var roomIds = parseRoomIds(roomIdsInput);
-
-    var payload = {
-      name: name,
-      protocol: protocol,
-      api_url: apiUrl,
-      chat_id: chatId,
-      template: template || '',
-      room_ids: roomIds,
-      extra_params: {},
-      receiver_key: 'chat_id',
-      message_key: 'text'
-    };
-
     btn.disabled = true;
     btn.textContent = '保存中...';
     try {
+      var id = document.getElementById('editConfigId').value;
+      var name = document.getElementById('editName').value.trim();
+      var protocol = document.getElementById('editProtocol').value;
+      var token = document.getElementById('editToken').value.trim();
+      var template = document.getElementById('editTemplate').value;
+      var roomIdsInput = document.getElementById('editRoomIdsInput').value;
+      var receiverId = document.getElementById('editReceiverId').value.trim();
+      var title = document.getElementById('editTitle').value.trim();
+
+      if (!name) { showMessage('请输入名称', 'error'); btn.disabled=false; btn.textContent='保存'; return; }
+      if (!token) { showMessage('请输入令牌', 'error'); btn.disabled=false; btn.textContent='保存'; return; }
+      if (protocol === 'telegram' && !receiverId) { showMessage('请输入接收者 ID', 'error'); btn.disabled=false; btn.textContent='保存'; return; }
+
+      var apiUrl = '';
+      if (protocol === 'telegram') apiUrl = 'https://api.telegram.org/bot' + token + '/sendMessage';
+      else if (protocol === 'serverchan') apiUrl = 'https://sctapi.ftqq.com/' + token + '.send';
+      else { showMessage('不支持的协议', 'error'); btn.disabled=false; btn.textContent='保存'; return; }
+
+      var chatId = (protocol === 'telegram') ? receiverId : title;
+      var roomIds = parseRoomIds(roomIdsInput);
+
+      var payload = {
+        name: name,
+        protocol: protocol,
+        api_url: apiUrl,
+        chat_id: chatId,
+        template: template || '',
+        room_ids: roomIds,
+        extra_params: {},
+        receiver_key: 'chat_id',
+        message_key: 'text'
+      };
+
       await axios.put('/api/notify-configs/' + id, payload);
       showMessage('配置更新成功', 'info');
       bootstrap.Modal.getInstance(document.getElementById('editNotifyModal')).hide();
@@ -969,7 +936,6 @@ function initNotifyEvents() {
   });
 }
 
-// ========== 页面初始化 ==========
 window.initPage = async function() {
   try {
     await loadRoomSelect();
@@ -998,7 +964,6 @@ export default {
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
-
       headers.set('Host', 'live-api.ctn32.us.kg');
       headers.set('Origin', 'https://live.ctn32.us.kg');
       headers.set('Referer', 'https://live.ctn32.us.kg/');
@@ -1011,13 +976,6 @@ export default {
         newCookie = oldCookie ? oldCookie + '; ctn32=ctn32' : 'ctn32=ctn32';
       }
       headers.set('Cookie', newCookie);
-
-      console.log('[Proxy] Request:', {
-        method: request.method,
-        target,
-        origin: headers.get('Origin'),
-        cookie: newCookie
-      });
 
       const requestBody = (request.method === 'GET' || request.method === 'HEAD')
         ? undefined
@@ -1036,11 +994,7 @@ export default {
       } catch (e) {
         console.error('[Proxy] Fetch error:', e);
         return new Response(
-          JSON.stringify({
-            error: 'Backend proxy failed',
-            message: e.message,
-            target
-          }),
+          JSON.stringify({ error: 'Backend proxy failed', message: e.message, target }),
           { status: 502, headers: { 'Content-Type': 'application/json' } }
         );
       }
@@ -1049,12 +1003,7 @@ export default {
         const location = response.headers.get('location') || '未知';
         console.error('[Proxy] Redirect detected:', { status: response.status, location, target });
         return new Response(
-          JSON.stringify({
-            error: 'Backend returned redirect',
-            status: response.status,
-            location: location,
-            target: target
-          }),
+          JSON.stringify({ error: 'Backend returned redirect', status: response.status, location: location, target }),
           { status: 502, headers: { 'Content-Type': 'application/json' } }
         );
       }
