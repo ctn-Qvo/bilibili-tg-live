@@ -341,7 +341,7 @@ async function sendNotificationToConfig(config, text, extra) {
 
 async function sendNotification(text, env, extra) {
   extra = extra || {};
-  const roomId = extra.room_id; // 当前房间ID
+  const roomId = extra.room_id;
   const configs = await getNotifyConfigs(env);
   const enabled = configs.filter(c => c.enabled);
   if (enabled.length === 0) {
@@ -350,10 +350,8 @@ async function sendNotification(text, env, extra) {
   }
   let success = false;
   for (const config of enabled) {
-    // 检查房间过滤
     if (config.room_ids && Array.isArray(config.room_ids) && config.room_ids.length > 0) {
       if (!roomId || !config.room_ids.includes(roomId)) {
-        // 该配置不匹配当前房间，跳过
         continue;
       }
     }
@@ -516,6 +514,25 @@ async function toggleNotifyConfig(env, id) {
   const newEnabled = current.enabled === 1 ? 0 : 1;
   await env.DB.prepare('UPDATE notify_configs SET enabled = ? WHERE id = ?').bind(newEnabled, id).run();
   await systemLog(env, 'user', '切换通知配置状态', { id, enabled: newEnabled });
+}
+
+async function updateNotifyConfig(env, id, config) {
+  const roomIds = config.room_ids || [];
+  await env.DB.prepare(
+    `UPDATE notify_configs SET name=?, protocol=?, api_url=?, chat_id=?, receiver_key=?, message_key=?, template=?, extra_params=?, room_ids=? WHERE id=?`
+  ).bind(
+    config.name,
+    config.protocol,
+    config.api_url,
+    config.chat_id || '',
+    config.receiver_key || 'chat_id',
+    config.message_key || 'text',
+    config.template || CONFIG.DEFAULT_TEMPLATE,
+    JSON.stringify(config.extra_params || {}),
+    JSON.stringify(roomIds),
+    id
+  ).run();
+  await systemLog(env, 'user', '更新通知配置', { id, name: config.name });
 }
 
 async function getLogs(env) {
@@ -817,6 +834,32 @@ async function handleRequest(request, env) {
       let body; try { body = await request.json(); } catch { body = {}; }
       const id = body.id; if (!id) return jsonResponse({ error: '缺少ID' }, 400, request, env);
       try { await toggleNotifyConfig(env, id); return jsonResponse({ success: true }, 200, request, env); } catch (e) { return jsonResponse({ error: e.message }, 404, request, env); }
+    }
+    if (path.startsWith('/api/notify-configs/') && method === 'PUT') {
+      const id = path.split('/')[3];
+      if (!id) return jsonResponse({ error: '缺少ID' }, 400, request, env);
+      let body; try { body = await request.json(); } catch { body = {}; }
+      const { name, protocol, api_url, chat_id, template, room_ids, extra_params, receiver_key, message_key } = body;
+      if (!name) return jsonResponse({ error: '缺少名称' }, 400, request, env);
+      if (!['telegram', 'serverchan'].includes(protocol)) {
+        return jsonResponse({ error: '仅支持 telegram 或 serverchan 协议' }, 400, request, env);
+      }
+      try {
+        await updateNotifyConfig(env, id, {
+          name,
+          protocol,
+          api_url,
+          chat_id: chat_id || '',
+          template: template || CONFIG.DEFAULT_TEMPLATE,
+          room_ids: Array.isArray(room_ids) ? room_ids : [],
+          extra_params: extra_params || {},
+          receiver_key: receiver_key || 'chat_id',
+          message_key: message_key || 'text'
+        });
+        return jsonResponse({ success: true }, 200, request, env);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 500, request, env);
+      }
     }
     if (path === '/api/notify-configs/test' && method === 'POST') {
       let body; try { body = await request.json(); } catch { body = {}; }
