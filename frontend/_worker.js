@@ -1,4 +1,3 @@
-// ========== 公共头部与样式 ==========
 const COMMON_HEAD = `
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,15 +13,19 @@ const COMMON_HEAD = `
 <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.2/dist/sweetalert2.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#f0f5ff;--card-bg:#ffffff;--primary:#2b6cb5;--text:#1a365d}
-[data-bs-theme="dark"]{--bg:#1a202c;--card-bg:#2d3748;--primary:#4a8bdb;--text:#e2e8f0}
-body{background:var(--bg);color:var(--text);transition:0.3s}
-.card{background:var(--card-bg);border:none;border-radius:16px;box-shadow:0 4px 12px rgba(43,108,181,0.08)}
-.card-header{background:var(--primary);color:white;border-radius:16px 16px 0 0!important;padding:0.75rem 1.25rem;font-weight:600}
+:root{--bg:#f0f5ff;--card-bg:#ffffff;--primary:#fb7299;--primary-dark:#e05a7a;--text:#1a365d;--bili-blue:#00a1d6;--bili-bg:#f4f4f4}
+[data-bs-theme="dark"]{--bg:#1a202c;--card-bg:#2d3748;--primary:#fb7299;--primary-dark:#e05a7a;--text:#e2e8f0;--bili-bg:#1a202c}
+body{background:var(--bili-bg);color:var(--text);transition:0.3s;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.card{background:var(--card-bg);border:none;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.06);transition:all 0.2s}
+.card-header{background:transparent;border-bottom:1px solid #eee;color:var(--text);font-weight:600;padding:1rem 1.25rem;border-radius:16px 16px 0 0!important}
 .btn-primary{background:var(--primary);border-color:var(--primary)}
+.btn-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.btn-primary:focus{box-shadow:0 0 0 0.25rem rgba(251,114,153,0.4)}
 .btn-outline-primary{color:var(--primary);border-color:var(--primary)}
-.btn-outline-primary:hover{background:var(--primary);color:white}
-.btn-outline-danger:hover{background:#dc3545;color:white}
+.btn-outline-primary:hover{background:var(--primary);border-color:var(--primary);color:#fff}
+.form-control:focus,.form-select:focus{border-color:var(--primary);box-shadow:0 0 0 0.2rem rgba(251,114,153,0.25)}
+.table th{border-top:none;font-weight:600;color:#666}
+.table td{vertical-align:middle}
 .status-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;flex-shrink:0}
 .status-dot.live{background:#20c997;box-shadow:0 0 12px rgba(32,201,151,0.6)}
 .status-dot.offline{background:#dc3545;box-shadow:0 0 12px rgba(220,53,69,0.4)}
@@ -39,13 +42,15 @@ body{background:var(--bg);color:var(--text);transition:0.3s}
 .tab-btn{border-radius:12px 12px 0 0;font-weight:500}
 .tab-btn.active{background:var(--primary);color:white}
 .tab-btn:not(.active){background:transparent;color:var(--text)}
-.tab-btn:not(.active):hover{background:rgba(43,108,181,0.08)}
+.tab-btn:not(.active):hover{background:rgba(251,114,153,0.08)}
 #notifies .form-control,#notifies .form-select{background:var(--card-bg);color:var(--text);border-color:#ced4da}
 [data-bs-theme="dark"] .form-control,[data-bs-theme="dark"] .form-select{background:#2d3748;color:#e2e8f0;border-color:#4a5568}
+[data-bs-theme="dark"] .table th{color:#a0aec0}
+[data-bs-theme="dark"] .table td{color:#e2e8f0}
+[data-bs-theme="dark"] .card-header{border-bottom-color:#4a5568}
 </style>
 `;
 
-// ========== 公共 JavaScript ==========
 const COMMON_JS = `
 function closest(el, selector) {
   while (el && el !== document) {
@@ -185,7 +190,6 @@ function logout() {
 }
 `;
 
-// ========== 登录页面 ==========
 const LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="zh">
 <head>${COMMON_HEAD}
@@ -227,7 +231,6 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 </body>
 </html>`;
 
-// ========== 仪表盘通用模板 ==========
 function dashboardTemplate(bodyContent, activeTab, pageScript) {
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -249,7 +252,6 @@ function dashboardTemplate(bodyContent, activeTab, pageScript) {
 </div>
 <script>
 ${COMMON_JS}
-// 主题切换
 document.getElementById('themeToggle').addEventListener('click', function() {
   var html = document.documentElement;
   var theme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
@@ -261,8 +263,6 @@ if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').match
   document.getElementById('themeToggle').textContent = '亮色';
 }
 document.getElementById('logoutBtn').addEventListener('click', logout);
-
-// 认证检查
 (async function() {
   if (!(await checkAuth())) {
     window.location.href = '/login';
@@ -278,7 +278,6 @@ ${pageScript}
 </html>`;
 }
 
-// ========== 房间管理页面 ==========
 const ROOMS_PAGE = dashboardTemplate(`
 <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-house-door"></i> 监控房间<div class="ms-auto d-flex flex-wrap gap-2"><button id="addRoomBtn" class="btn btn-sm btn-light"><i class="bi bi-plus-circle"></i> 添加</button><button id="checkAllBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-repeat"></i> 检查</button><button id="refreshRoomsBtn" class="btn btn-sm btn-light"><i class="bi bi-cloud-refresh"></i> 刷新</button><button id="sendLiveBtn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> 模拟</button><div class="input-group input-group-sm" style="width:200px;"><input id="singleCheckInput" class="form-control" placeholder="房间号"><button id="singleCheckBtn" class="btn btn-light">查</button></div></div></div><div class="card-body"><div id="roomContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3"></div></div></div>
 <div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
@@ -415,7 +414,6 @@ window.initPage = async function() {
 };
 `);
 
-// ========== 日志页面 ==========
 const LOGS_PAGE = dashboardTemplate(`
 <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-journal-text"></i> 运行日志<div class="ms-auto d-flex gap-2 flex-wrap"><button id="clearLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-trash"></i> 清除</button><button id="refreshLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-clockwise"></i> 刷新</button><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="autoRefresh" checked><label class="form-check-label" for="autoRefresh">自动</label></div><input id="logSearch" class="form-control form-control-sm" placeholder="搜索..." style="width:120px;"><select id="logLevelFilter" class="form-select form-select-sm" style="width:auto;"><option value="">全部</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option></select><button id="exportLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-download"></i></button></div></div><div class="card-body"><div id="logContainer" class="log-box"></div></div></div>
 `, 'logs', `
@@ -503,18 +501,92 @@ window.initPage = async function() {
 };
 `);
 
-// ========== 通知配置页面（仅 Telegram + Server酱） ==========
 const NOTIFY_PAGE = dashboardTemplate(`
-<div class="card mb-3"><div class="card-header"><i class="bi bi-plus-circle"></i> 添加通知配置</div><div class="card-body"><form id="addNotifyForm" class="row g-3"><div class="col-md-4"><label class="form-label">名称</label><input type="text" name="name" class="form-control" placeholder="配置名称" required></div><div class="col-md-4"><label class="form-label">协议</label><select name="protocol" id="protocolSelect" class="form-select"><option value="telegram">Telegram</option><option value="serverchan">Server酱</option></select></div><div class="col-md-4"><label class="form-label">令牌</label><input type="text" id="tokenInput" class="form-control" placeholder="Bot Token 或 SendKey" required><small id="tokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small></div><input type="hidden" id="apiUrl" name="api_url"><div class="col-md-6"><label class="form-label" id="receiverLabel">接收者 ID / 标题</label><input type="text" name="chat_id" id="chatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）"><small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small></div><div class="col-12"><label class="form-label">通知模板 (可选)</label><textarea name="template" id="templateArea" class="form-control" rows="6">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea></div><div class="col-12"><button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> 添加配置</button></div></form></div></div>
-<div class="card"><div class="card-header"><i class="bi bi-list-ul"></i> 现有配置</div><div class="card-body"><div class="table-responsive"><table class="table table-hover"><thead><tr><th>名称</th><th>协议</th><th>状态</th><th>操作</th></tr></thead><tbody id="configTableBody"></tbody></table></div></div></div>
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-transparent"><i class="bi bi-plus-circle me-2"></i>添加通知配置</div>
+      <div class="card-body">
+        <form id="addNotifyForm" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">名称</label>
+            <input type="text" name="name" class="form-control" placeholder="如：我的Telegram" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">协议</label>
+            <select name="protocol" id="protocolSelect" class="form-select">
+              <option value="telegram">Telegram</option>
+              <option value="serverchan">Server酱</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">令牌</label>
+            <input type="text" id="tokenInput" class="form-control" placeholder="Bot Token 或 SendKey" required>
+            <small id="tokenHelp" class="text-muted">Telegram 填入 Bot Token，Server酱 填入 SendKey</small>
+          </div>
+          <input type="hidden" id="apiUrl" name="api_url">
+          <div class="col-12">
+            <label class="form-label fw-semibold" id="receiverLabel">接收者 ID / 标题</label>
+            <input type="text" name="chat_id" id="chatId" class="form-control" placeholder="Telegram 填 chat_id，Server酱 填标题（可选）">
+            <small id="chatHelp" class="text-muted">Telegram 必填接收者 ID；Server酱 可选，作为消息标题</small>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">指定推送房间（按住 Ctrl 多选）</label>
+            <select name="room_ids" id="roomIdsSelect" class="form-select" multiple style="height:120px;"></select>
+            <small class="text-muted">不选择则推送所有房间；选择后仅推送选中的房间</small>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">通知模板（可选）</label>
+            <textarea name="template" id="templateArea" class="form-control" rows="5">[{{事件}}] {{主播}}\n标题：{{标题}}\n房间号：{{房间号}} | UID：{{UID}}\n分区：{{父分区}} - {{分区}}\n人气：{{人气}} | 直播时间：{{直播时间}}\n直播间链接：{{直播链接}}\n封面：{{封面}}\n等级：{{等级}} | 粉丝：{{粉丝}} | 关注：{{关注}} | 性别：{{性别}}\nVIP：{{VIP类型}} ({{VIP状态}})\n投稿数：{{投稿数}} | 文章数：{{文章数}}\n签名：{{签名}}\n头像：{{头像}}\n更新时间：{{时间}}</textarea>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> 添加配置</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-transparent"><i class="bi bi-list-ul me-2"></i>现有配置</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>名称</th><th>协议</th><th>指定房间</th><th>状态</th><th>操作</th></tr>
+            </thead>
+            <tbody id="configTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `, 'notify', `
+async function loadRoomSelect() {
+  try {
+    var res = await axios.get('/api/rooms');
+    var rooms = res.data.rooms || [];
+    var select = document.getElementById('roomIdsSelect');
+    select.innerHTML = '';
+    rooms.forEach(function(id) {
+      var opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = '房间 ' + id;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('加载房间列表失败', e);
+  }
+}
+
 async function renderConfigs() {
   var tbody = document.getElementById('configTableBody');
   try {
     var res = await axios.get('/api/notify-configs');
     var configs = res.data;
     if (!configs.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无配置</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无配置</td></tr>';
       return;
     }
     var html = '';
@@ -523,7 +595,9 @@ async function renderConfigs() {
       var protocolLabel = { telegram: 'Telegram', serverchan: 'Server酱' }[cfg.protocol] || cfg.protocol;
       var status = cfg.enabled ? '启用' : '禁用';
       var statusColor = cfg.enabled ? 'success' : 'secondary';
-      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
+      var roomIds = cfg.room_ids || [];
+      var roomDisplay = roomIds.length ? roomIds.map(function(id){ return '房间'+id; }).join(', ') : '全部';
+      html += '<tr><td>' + escapeHtml(cfg.name) + '</td><td>' + escapeHtml(protocolLabel) + '</td><td>' + escapeHtml(roomDisplay) + '</td><td><span class="badge bg-' + statusColor + '">' + status + '</span></td><td><button class="test-btn btn btn-sm btn-outline-primary me-1" data-id="' + cfg.id + '">测试</button><button class="toggle-btn btn btn-sm btn-outline-warning me-1" data-id="' + cfg.id + '">' + (cfg.enabled ? '禁用' : '启用') + '</button><button class="delete-config-btn btn btn-sm btn-outline-danger" data-id="' + cfg.id + '">删除</button></td></tr>';
     }
     tbody.innerHTML = html;
   } catch (e) {
@@ -540,9 +614,9 @@ function updateNotifyForm() {
   var chatHelp = document.getElementById('chatHelp');
   if (val === 'telegram') {
     tokenInput.placeholder = '请输入 Bot Token';
-    tokenHelp.textContent = 'Telegram Bot Token，如 123456:ABC-DEF';
+    tokenHelp.textContent = 'Telegram Bot Token';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID 或 @username';
+    chatId.placeholder = '数字 ID';
     chatHelp.textContent = '必填，消息接收者的 chat_id';
   } else if (val === 'serverchan') {
     tokenInput.placeholder = '请输入 SendKey';
@@ -575,20 +649,23 @@ function initNotifyEvents() {
     document.getElementById('apiUrl').value = apiUrl;
 
     var formData = new FormData(form);
+    var selectedRoomIds = Array.from(document.getElementById('roomIdsSelect').selectedOptions).map(function(opt){ return opt.value; });
+
     var payload = {
       name: formData.get('name'),
       protocol: protocol,
       api_url: apiUrl,
       chat_id: formData.get('chat_id') || '',
       template: formData.get('template') || '',
-      extra_params: {}
+      extra_params: {},
+      room_ids: selectedRoomIds
     };
     if (protocol === 'telegram') {
       payload.receiver_key = 'chat_id';
       payload.message_key = 'text';
     } else if (protocol === 'serverchan') {
-      payload.receiver_key = 'chat_id';   // 用作标题
-      payload.message_key = 'text';       // 实际不用，但保留
+      payload.receiver_key = 'chat_id';
+      payload.message_key = 'text';
     }
     try {
       await axios.post('/api/notify-configs', payload);
@@ -596,6 +673,7 @@ function initNotifyEvents() {
       await renderConfigs();
       form.reset();
       updateNotifyForm();
+      document.getElementById('roomIdsSelect').selectedIndex = -1;
     } catch (e) {
       var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
       showMessage('添加失败: ' + errMsg, 'error');
@@ -653,12 +731,12 @@ function initNotifyEvents() {
 }
 
 window.initPage = async function() {
+  await loadRoomSelect();
   await renderConfigs();
   initNotifyEvents();
 };
 `);
 
-// ========== Worker 主入口 ==========
 export default {
   async fetch(request, env) {
     const backendUrl = env.BACKEND_URL;
@@ -672,19 +750,16 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 代理 API 请求到后端
     if (path.startsWith('/api/')) {
       const target = backendUrl.replace(/\/$/, '') + path + url.search;
       const headers = new Headers(request.headers);
 
-      // 设置正确的 Host 和 Origin
       headers.set('Host', 'live-api.ctn32.us.kg');
       headers.set('Origin', 'https://live.ctn32.us.kg');
       headers.set('Referer', 'https://live.ctn32.us.kg/');
       headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
       headers.set('X-Forwarded-Proto', 'https');
 
-      // 注入 ctn32 Cookie（用于 bypass 认证）
       const oldCookie = request.headers.get('cookie') || '';
       let newCookie = oldCookie;
       if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
@@ -705,7 +780,6 @@ export default {
 
       let response;
       try {
-        // 禁止自动跟随重定向
         response = await fetch(
           new Request(target, {
             method: request.method,
@@ -726,7 +800,6 @@ export default {
         );
       }
 
-      // 检测重定向
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get('location') || '未知';
         console.error('[Proxy] Redirect detected:', { status: response.status, location, target });
@@ -741,7 +814,6 @@ export default {
         );
       }
 
-      // 构建响应头
       const outHeaders = new Headers();
       for (const [key, value] of response.headers) {
         if (key.toLowerCase() !== 'set-cookie') {
@@ -749,7 +821,6 @@ export default {
         }
       }
 
-      // 透传 Set-Cookie
       if (typeof response.headers.getSetCookie === 'function') {
         const cookies = response.headers.getSetCookie();
         for (const c of cookies) {
@@ -772,7 +843,6 @@ export default {
       });
     }
 
-    // 前端路由
     if (path === '/login') {
       return new Response(LOGIN_PAGE, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
