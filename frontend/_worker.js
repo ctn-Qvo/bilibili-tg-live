@@ -85,6 +85,18 @@ function formatDate(iso) {
   return dayjs(iso).format('YYYY-MM-DD HH:mm:ss');
 }
 
+// 归一化 rooms 数据，兼容旧版字符串数组和新版对象数组
+function normalizeRooms(rooms) {
+  if (!Array.isArray(rooms)) return [];
+  return rooms.map(function(item) {
+    if (typeof item === 'object' && item !== null && 'room_id' in item) {
+      return item;
+    }
+    // 旧版：纯字符串 ID
+    return { room_id: String(item), notify_enabled: 1 };
+  });
+}
+
 axios.defaults.baseURL = '';
 axios.defaults.withCredentials = true;
 axios.defaults.timeout = 10000;
@@ -287,7 +299,8 @@ async function renderRooms() {
   var container = document.getElementById('roomContainer');
   try {
     var res = await axios.get('/api/rooms');
-    var rooms = res.data.rooms;
+    var rawRooms = res.data.rooms;
+    var rooms = normalizeRooms(rawRooms);
     var states = res.data.states || {};
     if (!rooms || !rooms.length) {
       container.innerHTML = '<div class="col-12 text-center text-muted py-4">暂无房间，请添加</div>';
@@ -613,7 +626,8 @@ var allRooms = [];
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
-    var rooms = res.data.rooms || [];
+    var rawRooms = res.data.rooms;
+    var rooms = normalizeRooms(rawRooms);
     allRooms = rooms;
     var select = document.getElementById('roomIdsSelect');
     var editSelect = document.getElementById('editRoomIds');
