@@ -1,4 +1,3 @@
-// ==================== 公共头部 ====================
 const COMMON_HEAD = `
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -52,7 +51,6 @@ body{background:var(--bili-bg);color:var(--text);transition:0.3s;font-family:-ap
 </style>
 `;
 
-// ==================== 公共 JavaScript ====================
 const COMMON_JS = `
 function closest(el, selector) {
   while (el && el !== document) {
@@ -202,7 +200,6 @@ function logout() {
 }
 `;
 
-// ==================== 仪表盘模板 ====================
 function dashboardTemplate(bodyContent, activeTab, pageScript) {
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -250,7 +247,6 @@ ${pageScript}
 </html>`;
 }
 
-// ==================== 登录页 ====================
 const LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="zh">
 <head>${COMMON_HEAD}
@@ -292,7 +288,6 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 </body>
 </html>`;
 
-// ==================== 房间列表页（不变） ====================
 const ROOMS_PAGE = dashboardTemplate(`
 <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-house-door"></i> 监控房间<div class="ms-auto d-flex flex-wrap gap-2"><button id="addRoomBtn" class="btn btn-sm btn-light"><i class="bi bi-plus-circle"></i> 添加</button><button id="checkAllBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-repeat"></i> 检查</button><button id="refreshRoomsBtn" class="btn btn-sm btn-light"><i class="bi bi-cloud-refresh"></i> 刷新</button><button id="sendLiveBtn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> 模拟</button><div class="input-group input-group-sm" style="width:200px;"><input id="singleCheckInput" class="form-control" placeholder="房间号"><button id="singleCheckBtn" class="btn btn-light">查</button></div></div></div><div class="card-body"><div id="roomContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3"></div></div></div>
 <div class="modal fade" id="addRoomModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">添加房间</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>请输入直播间房间号：</p><input type="text" id="roomInput" class="form-control" placeholder="例如：1768500100"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" id="addRoomConfirmBtn" class="btn btn-primary">完成</button></div></div></div></div>
@@ -431,7 +426,6 @@ window.initPage = async function() {
 };
 `);
 
-// ==================== 日志页（不变） ====================
 const LOGS_PAGE = dashboardTemplate(`
 <div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center"><i class="bi bi-journal-text"></i> 运行日志<div class="ms-auto d-flex gap-2 flex-wrap"><button id="clearLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-trash"></i> 清除</button><button id="refreshLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-arrow-clockwise"></i> 刷新</button><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="autoRefresh" checked><label class="form-check-label" for="autoRefresh">自动</label></div><input id="logSearch" class="form-control form-control-sm" placeholder="搜索..." style="width:120px;"><select id="logLevelFilter" class="form-select form-select-sm" style="width:auto;"><option value="">全部</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option></select><button id="exportLogsBtn" class="btn btn-sm btn-light"><i class="bi bi-download"></i></button></div></div><div class="card-body"><div id="logContainer" class="log-box"></div></div></div>
 `, 'logs', `
@@ -519,7 +513,6 @@ window.initPage = async function() {
 };
 `);
 
-// ==================== 通知配置页（已优化单房间自动选中） ====================
 const NOTIFY_PAGE = dashboardTemplate(`
 <div class="row g-4">
   <div class="col-lg-6">
@@ -650,7 +643,6 @@ async function loadRoomSelect() {
       opt2.textContent = '房间 ' + id;
       editSelect.appendChild(opt2);
     });
-    // 优化：如果只有一个房间，自动选中（添加和编辑都生效）
     if (rooms.length === 1) {
       select.selectedIndex = 0;
       editSelect.selectedIndex = 0;
@@ -696,7 +688,7 @@ function updateAddForm() {
     tokenInput.placeholder = '请输入 Bot Token';
     tokenHelp.textContent = 'Telegram Bot Token';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID 或 @username';
+    chatId.placeholder = '数字 ID';
     chatHelp.textContent = '必填，消息接收者的 chat_id';
   } else if (protocol === 'serverchan') {
     tokenInput.placeholder = '请输入 SendKey';
@@ -716,7 +708,7 @@ function updateEditForm() {
   if (protocol === 'telegram') {
     tokenInput.placeholder = '请输入 Bot Token';
     receiverLabel.textContent = '接收者 ID (chat_id)';
-    chatId.placeholder = '数字 ID 或 @username';
+    chatId.placeholder = '数字 ID';
     chatHelp.textContent = '必填，消息接收者的 chat_id';
   } else if (protocol === 'serverchan') {
     tokenInput.placeholder = '请输入 SendKey';
@@ -855,7 +847,6 @@ function initNotifyEvents() {
         for (var i = 0; i < roomOptions.length; i++) {
           roomOptions[i].selected = roomIds.indexOf(roomOptions[i].value) !== -1;
         }
-        // 若原配置未指定房间，但当前只有一个可选房间，则自动勾选
         if (roomIds.length === 0 && roomOptions.length === 1) {
           roomOptions[0].selected = true;
         }
@@ -921,3 +912,142 @@ window.initPage = async function() {
   initNotifyEvents();
 };
 `);
+
+export default {
+  async fetch(request, env) {
+    const backendUrl = env.BACKEND_URL;
+    if (!backendUrl) {
+      return new Response(
+        JSON.stringify({ error: 'BACKEND_URL environment variable not set' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    if (path.startsWith('/api/')) {
+      const target = backendUrl.replace(/\/$/, '') + path + url.search;
+      const headers = new Headers(request.headers);
+
+      headers.set('Host', 'live-api.ctn32.us.kg');
+      headers.set('Origin', 'https://live.ctn32.us.kg');
+      headers.set('Referer', 'https://live.ctn32.us.kg/');
+      headers.set('X-Forwarded-Host', request.headers.get('Host') || '');
+      headers.set('X-Forwarded-Proto', 'https');
+
+      const oldCookie = request.headers.get('cookie') || '';
+      let newCookie = oldCookie;
+      if (!/(^|;\s*)ctn32=ctn32/i.test(oldCookie)) {
+        newCookie = oldCookie ? oldCookie + '; ctn32=ctn32' : 'ctn32=ctn32';
+      }
+      headers.set('Cookie', newCookie);
+
+      console.log('[Proxy] Request:', {
+        method: request.method,
+        target,
+        origin: headers.get('Origin'),
+        cookie: newCookie
+      });
+
+      const requestBody = (request.method === 'GET' || request.method === 'HEAD')
+        ? undefined
+        : await request.arrayBuffer();
+
+      let response;
+      try {
+        response = await fetch(
+          new Request(target, {
+            method: request.method,
+            headers: headers,
+            body: requestBody,
+            redirect: 'manual'
+          })
+        );
+      } catch (e) {
+        console.error('[Proxy] Fetch error:', e);
+        return new Response(
+          JSON.stringify({
+            error: 'Backend proxy failed',
+            message: e.message,
+            target
+          }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location') || 'unknown';
+        console.error('[Proxy] Redirect detected:', { status: response.status, location, target });
+        return new Response(
+          JSON.stringify({
+            error: 'Backend returned redirect',
+            status: response.status,
+            location: location,
+            target: target
+          }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const outHeaders = new Headers();
+      for (const [key, value] of response.headers) {
+        if (key.toLowerCase() !== 'set-cookie') {
+          outHeaders.append(key, value);
+        }
+      }
+
+      if (typeof response.headers.getSetCookie === 'function') {
+        const cookies = response.headers.getSetCookie();
+        for (const c of cookies) {
+          outHeaders.append('Set-Cookie', c);
+        }
+      } else {
+        const cookie = response.headers.get('set-cookie');
+        if (cookie) {
+          outHeaders.append('Set-Cookie', cookie);
+        }
+      }
+
+      outHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+      outHeaders.set('Pragma', 'no-cache');
+      outHeaders.set('Expires', '0');
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: outHeaders
+      });
+    }
+
+    if (path === '/login') {
+      return new Response(LOGIN_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/rooms') {
+      return new Response(ROOMS_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/logs') {
+      return new Response(LOGS_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/dashboard/notify') {
+      return new Response(NOTIFY_PAGE, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+    if (path === '/') {
+      return new Response(null, {
+        status: 302,
+        headers: { 'Location': '/dashboard/rooms' }
+      });
+    }
+
+    return new Response('Not Found', { status: 404 });
+  },
+  async scheduled(event, env) {
+  }
+};
