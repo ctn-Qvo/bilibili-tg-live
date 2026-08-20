@@ -563,7 +563,6 @@ const NOTIFY_PAGE = dashboardTemplate(`
     </div>
   </div>
 </div>
-<!-- 编辑模态框 -->
 <div class="modal fade" id="editNotifyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -614,12 +613,13 @@ var allRooms = [];
 async function loadRoomSelect() {
   try {
     var res = await axios.get('/api/rooms');
-    allRooms = res.data.rooms || [];
+    var rooms = res.data.rooms || [];
+    allRooms = rooms;
     var select = document.getElementById('roomIdsSelect');
     var editSelect = document.getElementById('editRoomIds');
     select.innerHTML = '';
     editSelect.innerHTML = '';
-    allRooms.forEach(function(room) {
+    rooms.forEach(function(room) {
       var id = room.room_id;
       var opt = document.createElement('option');
       opt.value = id;
@@ -812,17 +812,21 @@ function initNotifyEvents() {
         document.getElementById('editConfigId').value = cfg.id;
         document.getElementById('editName').value = cfg.name;
         document.getElementById('editProtocol').value = cfg.protocol;
-        document.getElementById('editToken').value = cfg.api_url ? cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1') : '';
-        if (cfg.protocol === 'serverchan') {
+        var tokenVal = '';
+        if (cfg.protocol === 'telegram') {
+          tokenVal = cfg.api_url.replace(/^https:\/\/api\.telegram\.org\/bot([^\/]+)\/sendMessage$/, '$1');
+        } else if (cfg.protocol === 'serverchan') {
           var match = cfg.api_url.match(/https:\/\/sctapi\.ftqq\.com\/([^.]+)\.send/);
-          if (match) document.getElementById('editToken').value = match[1];
+          if (match) tokenVal = match[1];
         }
+        document.getElementById('editToken').value = tokenVal;
         document.getElementById('editChatId').value = cfg.chat_id || '';
         document.getElementById('editTemplate').value = cfg.template || '';
         var editRoomSelect = document.getElementById('editRoomIds');
         var roomOptions = editRoomSelect.options;
+        var roomIds = cfg.room_ids || [];
         for (var i = 0; i < roomOptions.length; i++) {
-          roomOptions[i].selected = (cfg.room_ids || []).indexOf(roomOptions[i].value) !== -1;
+          roomOptions[i].selected = roomIds.indexOf(roomOptions[i].value) !== -1;
         }
         updateEditForm(cfg.protocol);
         var modal = new bootstrap.Modal(document.getElementById('editNotifyModal'));
